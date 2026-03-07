@@ -1,0 +1,255 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Consolas', 'Segoe UI', system-ui, monospace;
+  background: #2d2d2d;
+}
+
+.app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+.tabs-bar {
+  display: flex;
+  align-items: stretch;
+  background: #2d2d2d;
+  border-bottom: 1px solid #1e1e1e;
+  position: relative;
+}
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  flex: 0 1 auto;
+  max-width: calc(100% - 40px);
+  overflow: hidden;
+}
+
+.tab {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 80px;
+  max-width: 220px;
+  padding: 6px 16px 6px 12px;
+  border: none;
+  border-right: 1px solid #1e1e1e;
+  background: #2d2d2d;
+  color: #ccc;
+  font: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  white-space: nowrap;
+  text-overflow: clip;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.tabs--compressed .tab {
+  flex: 1 1 80px;
+  min-width: 60px;
+  max-width: 220px;
+}
+
+.tab--active {
+  background: #3c3c3c;
+  color: #fff;
+}
+
+.tab-label {
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  padding-right: 4px;
+}
+
+.tab::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 22px;
+  height: 100%;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    rgba(45, 45, 45, 0),
+    rgba(45, 45, 45, 0.9)
+  );
+}
+
+.tab-rename-input {
+  position: absolute;
+  inset: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid #4d4d4d;
+  background: #1e1e1e;
+  color: #fff;
+  font: inherit;
+  padding: 0 4px;
+}
+
+.tab-add {
+  flex: 0 0 44px;
+  border: none;
+  border-left: 1px solid #1e1e1e;
+  background: #3a3a3a;
+  color: #fdfdfd;
+  font-size: 20px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tab-add:hover {
+  background: #3a3a3a;
+  color: #fff;
+}
+
+.tab-add--disabled,
+.tab-add--disabled:hover {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Контекстное меню вкладки */
+.tab-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 160px;
+  background: #252526;
+  border: 1px solid #3f3f46;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  padding: 4px 0;
+  color: #f3f4f6;
+  font-size: 13px;
+  display: none;
+}
+
+.tab-menu-item {
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab-menu-item:hover {
+  background: #3f3f46;
+}
+
+.editor-wrap {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  width: 100%;
+  background: #3c3c3c;
+  color: #fff;
+}
+
+/* Колонка с номерами строк */
+.line-numbers {
+  flex-shrink: 0;
+  width: 52px;
+  padding: 12px 8px 12px 12px;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: right;
+  color: #858585;
+  user-select: none;
+  background: #3c3c3c;
+}
+
+.line-numbers .line-num {
+  display: block;
+  min-height: 1.6em;
+}
+
+/* Поле ввода на весь экран */
+.text-column {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 12px 12px 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  font-family: inherit;
+  border: none;
+  resize: none;
+  background: #3c3c3c;
+  color: #fff;
+  overflow: auto;
+  outline: none;
+}
+
+.text-column::placeholder {
+  color: #6d6d6d;
+}
+
+/* Скроллбар в стиле Windows */
+.text-column {
+  scrollbar-width: thin;
+  scrollbar-color: #787878 #505050;
+}
+
+.text-column::-webkit-scrollbar {
+  width: 16px;
+}
+
+.text-column::-webkit-scrollbar-track {
+  background: #505050;
+  border-left: 1px solid #404040;
+}
+
+.text-column::-webkit-scrollbar-thumb {
+  background: #787878;
+  border: 2px solid #505050;
+  border-radius: 0;
+  min-height: 30px;
+}
+
+.text-column::-webkit-scrollbar-thumb:hover {
+  background: #888;
+}
+
+.text-column::-webkit-scrollbar-thumb:active {
+  background: #606060;
+}
+
+.text-column::-webkit-scrollbar-button {
+  height: 16px;
+  background: #505050;
+  border: 1px solid #404040;
+}
+
+.text-column::-webkit-scrollbar-button:hover {
+  background: #585858;
+}
+
+.text-column::-webkit-scrollbar-button:vertical:decrement {
+  background: #505050 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4' viewBox='0 0 8 4'%3E%3Cpath fill='%23c0c0c0' d='M0 4l4-4 4 4z'/%3E%3C/svg%3E") center no-repeat;
+}
+
+.text-column::-webkit-scrollbar-button:vertical:increment {
+  background: #505050 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4' viewBox='0 0 8 4'%3E%3Cpath fill='%23c0c0c0' d='M0 0l4 4 4-4z'/%3E%3C/svg%3E") center no-repeat;
+}
