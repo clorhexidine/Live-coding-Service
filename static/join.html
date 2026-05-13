@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Приглашение в комнату — Live coding</title>
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/pages.css">
+</head>
+<body>
+  <div class="page-shell join-shell">
+    <div class="join-card" id="join-card">
+      <p class="join-loading" id="join-loading">Загрузка…</p>
+      <div class="join-error" id="join-error" style="display:none"></div>
+      <div class="join-flow" id="join-flow" style="display:none">
+        <h1 class="join-title" id="join-title">Комната</h1>
+        <p class="join-sub" id="join-sub"></p>
+        <div class="join-actions join-actions--choice" id="join-choice">
+          <button type="button" class="btn-secondary-lg" id="join-cancel">Отмена</button>
+          <button type="button" class="btn-primary-lg" id="join-confirm">Войти в комнату</button>
+        </div>
+        <div class="join-password-block" id="join-password-block" style="display:none">
+          <p class="join-pin-label">Пароль комнаты (6 символов)</p>
+          <div class="pin6-wrap" id="join-pin-host"></div>
+          <p class="field-hint field-hint--error" id="join-pin-error" style="display:none"></p>
+          <div class="join-actions">
+            <button type="button" class="btn-primary-lg" id="join-submit-pw">Войти</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/static/auth.js"></script>
+  <script src="/static/theme.js"></script>
+  <script src="/static/modal.js"></script>
+  <script src="/static/pin-input.js"></script>
+  <script>
+    const m = window.location.pathname.match(/\/join\/([^/]+)/);
+    const RAW_CODE = m ? decodeURIComponent(m[1]) : '';
+    const NORM = (RAW_CODE || '').trim().toUpperCase().replace(/\s+/g, '').slice(0, 8);
+
+    const elLoad = document.getElementById('join-loading');
+    const elErr = document.getElementById('join-error');
+    const elFlow = document.getElementById('join-flow');
+    const elTitle = document.getElementById('join-title');
+    const elSub = document.getElementById('join-sub');
+    const elChoice = document.getElementById('join-choice');
+    const elPwBlock = document.getElementById('join-password-block');
+    const elPinHost = document.getElementById('join-pin-host');
+    const elPinErr = document.getElementById('join-pin-error');
+    const btnCancel = document.getElementById('join-cancel');
+    const btnConfirm = document.getElementById('join-confirm');
+    const btnSubmitPw = document.getElementById('join-submit-pw');
+
+    let lookup = null;
+    let pinApi = null;
+
+    function showErr(msg) {
+      elLoad.style.display = 'none';
+      elFlow.style.display = 'none';
+      elErr.style.display = '';
+      elErr.textContent = msg;
+    }
+
+    async function doJoin(password) {
+      const res = await fetch('/api/rooms/join', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: NORM, password: password || null }),
+      });
+      if (res.status === 401) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.detail || 'Неверный пароль');
+      }
+      if (res.status === 404) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.detail || 'Комната не найдена');
+      }
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(typeof j.detail === 'string' ? j.detail : 'Не удалось войти');
+      }
+      const room = await res.json();
+      window.location.href = `/room/${room.id}`;
+    }
+
+    btnCancel.addEventListener('click', () => {
+      window.location.href = '/home';
+    });
+
+    btnConfirm.addEventListener('click', async () => {
+      if (!lookup) return;
+      if (lookup.has_password) {
+        elChoice.style.display = 'none';
+        elPwBlock.style.display = '';
+        elPinErr.style.display = 'none';
+        elPinErr.textContent = '';
+        if (!pinApi) {
+          pinApi = mountPin6(elPinHost, {
+            onComplete: () => {
+              elPinErr.style.display = 'none';
+            },
+          });
+        } else pinApi.clear();
+        requestAnimationFrame(() => pinApi.focus());
+        return;
+      }
+      try {
+        btnConfirm.disabled = true;
+        await doJoin(null);
+      } catch (e) {
+        await showAppAlert(e.message || 'Ошибка', { title: 'Ошибка' });
+      } finally {
+        btnConfirm.disabled = false;
+      }
+    });
+
+    btnSubmitPw.addEventListener('click', async () => {
+      const v = pinApi ? pinApi.getValue() : '';
+      if (v.length !== 6) {
+        elPinErr.style.display = '';
+        elPinErr.textContent = 'Введите все 6 символов';
+        return;
+      }
+      elPinErr.style.display = 'none';
+      try {
+        btnSubmitPw.disabled = true;
+        await doJoin(v);
+      } catch (e) {
+        elPinErr.style.display = '';
+        elPinErr.textContent = e.message || 'Ошибка';
+      } finally {
+        btnSubmitPw.disabled = false;
+      }
+    });
+
+    (async () => {
+      if (!NORM) {
+        showErr('Некорректная ссылка приглашения');
+        return;
+      }
+      const me = await getMe();
+      if (!me || !me.id) {
+        window.location.href = '/?join=' + encodeURIComponent(NORM);
+        return;
+      }
+
+      const res = await fetch('/api/rooms/lookup/' + encodeURIComponent(NORM), { credentials: 'include' });
+      if (res.status === 404) {
+        showErr('Комната не найдена');
+        return;
+      }
+      if (!res.ok) {
+        showErr('Не удалось проверить приглашение');
+        return;
+      }
+      lookup = await res.json();
+
+      if (lookup.is_member) {
+        window.location.replace('/room/' + lookup.room_id);
+        return;
+      }
+
+      elLoad.style.display = 'none';
+      elFlow.style.display = '';
+      elTitle.textContent = lookup.title || 'Комната #' + lookup.room_id;
+      elSub.textContent = lookup.has_password
+        ? 'Для входа потребуется пароль из 6 символов.'
+        : 'Вход без пароля.';
+
+      if (window.opener) {
+        /* открыто из другого окна — оставляем как есть */
+      }
+    })();
+  </script>
+</body>
+</html>

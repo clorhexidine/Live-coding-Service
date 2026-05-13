@@ -76,9 +76,18 @@
     });
 
     async function ensureNotLoggedIn() {
+      const sp = new URLSearchParams(window.location.search);
+      const joinCode = sp.get('join');
       const me = await getMe();
-      if (me && me.id) window.location.href = '/home';
-      else clearAuthForms();
+      if (me && me.id) {
+        if (joinCode && joinCode.trim()) {
+          window.location.href = '/join/' + encodeURIComponent(joinCode.trim().toUpperCase());
+        } else {
+          window.location.href = '/home';
+        }
+        return;
+      }
+      clearAuthForms();
     }
     ensureNotLoggedIn();
 
@@ -98,7 +107,12 @@
         errEl.textContent = j.detail || 'Ошибка входа';
         return;
       }
-      window.location.href = '/home';
+      const sp = new URLSearchParams(window.location.search);
+      const joinAfter = sp.get('join');
+      const target = joinAfter && joinAfter.trim()
+        ? '/join/' + encodeURIComponent(joinAfter.trim().toUpperCase())
+        : '/home';
+      window.location.href = target;
     });
 
     formRegister.addEventListener('submit', async (e) => {
@@ -117,7 +131,12 @@
         errEl.textContent = typeof j.detail === 'string' ? j.detail : (j.detail?.[0]?.msg || 'Ошибка регистрации');
         return;
       }
-      window.location.href = '/home';
+      const sp = new URLSearchParams(window.location.search);
+      const joinAfter = sp.get('join');
+      const target = joinAfter && joinAfter.trim()
+        ? '/join/' + encodeURIComponent(joinAfter.trim().toUpperCase())
+        : '/home';
+      window.location.href = target;
     });
   </script>
 </body>

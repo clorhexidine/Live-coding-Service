@@ -21,6 +21,28 @@ const commentSnippet = document.getElementById('comment-snippet');
 const commentBodyInput = document.getElementById('comment-body-input');
 const commentPopoverLabel = document.getElementById('comment-popover-label');
 const commentCtxMenu = document.getElementById('comment-ctx-menu');
+const btnBack = document.getElementById('btn-back');
+const btnRoomSettings = document.getElementById('btn-room-settings');
+const roomSettingsBackdrop = document.getElementById('room-settings-backdrop');
+const roomSettingsPanel = document.getElementById('room-settings-panel');
+const roomSettingsClose = document.getElementById('room-settings-close');
+const settingsRoomTitle = document.getElementById('settings-room-title');
+const settingsSaveTitle = document.getElementById('settings-save-title');
+const settingsInviteCode = document.getElementById('settings-invite-code');
+const settingsInviteLink = document.getElementById('settings-invite-link');
+const settingsCopyCode = document.getElementById('settings-copy-code');
+const settingsCopyLink = document.getElementById('settings-copy-link');
+const settingsPwHint = document.getElementById('settings-pw-hint');
+const settingsOldPwWrap = document.getElementById('settings-old-pw-wrap');
+const settingsPinOldHost = document.getElementById('settings-pin-old');
+const settingsPinNewHost = document.getElementById('settings-pin-new');
+const settingsPinNew2Host = document.getElementById('settings-pin-new2');
+const settingsClearPassword = document.getElementById('settings-clear-password');
+const settingsPwErr = document.getElementById('settings-pw-err');
+const settingsSavePassword = document.getElementById('settings-save-password');
+const settingsMembers = document.getElementById('settings-members');
+const settingsDeleteRoom = document.getElementById('settings-delete-room');
+const settingsSaveHint = document.getElementById('settings-save-hint');
 
 let files = [];
 let activeFileId = null;
@@ -49,7 +71,10 @@ let commentPopoverSnippetText = '';
 /** @type {string|null} */
 let menuCommentId = null;
 
-let saveSelectionRaf = null;
+let settingsPinOld = null;
+let settingsPinNew = null;
+let settingsPinNew2 = null;
+let roomPollTimer = null;
 
 function createFileName(index) {
   return `${FILE_PREFIX}${index}`;
@@ -133,9 +158,8 @@ function isRoomOwner() {
 }
 
 function applyRoomTitleEditable() {
-  const ok = isRoomOwner();
-  roomTitleEl.classList.toggle('room-title--editable', ok);
-  roomTitleEl.title = ok ? 'Двойной щелчок — переименовать' : '';
+  roomTitleEl.classList.remove('room-title--editable');
+  roomTitleEl.title = '';
 }
 
 function autoSizeRoomDesc() {
@@ -367,89 +391,20 @@ function openCommentPopoverEdit(comment) {
   });
 }
 
-function startRoomTitleRename() {
-  if (!isRoomOwner()) return;
-  if (roomTitleHost.querySelector('.room-rename-input')) return;
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'room-rename-input room-rename-input--room';
-  const startedAs = roomTitleEl.textContent.trim();
-  input.value = startedAs;
-  roomTitleEl.style.visibility = 'hidden';
-
-  let done = false;
-
-  async function finish(commit) {
-    if (done) return;
-    done = true;
-    const raw = input.value;
-    if (input.parentNode) input.parentNode.removeChild(input);
-    roomTitleEl.style.visibility = '';
-
-    if (!commit) return;
-
-    const t = raw.trim();
-    const fallback = `Комната #${ROOM_ID}`;
-    const finalName = t || fallback;
-    if (finalName === startedAs) return;
-
-    try {
-      const res = await fetch(`/api/rooms/${ROOM_ID}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: finalName }),
-      });
-      if (res.status === 401) {
-        window.location.href = '/';
-        return;
-      }
-      if (!res.ok) {
-        await showAppAlert('Не удалось переименовать', { title: 'Ошибка' });
-        roomTitleEl.textContent = startedAs;
-        return;
-      }
-      roomTitleEl.textContent = finalName;
-      document.title = `${finalName} — Live coding`;
-    } catch (_) {
-      roomTitleEl.textContent = startedAs;
-    }
-  }
-
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      finish(true);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      finish(false);
-    }
-  });
-
-  input.addEventListener('blur', () => finish(true));
-
-  roomTitleHost.appendChild(input);
-  input.focus();
-  input.select();
-}
-
-roomTitleEl.addEventListener('dblclick', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  startRoomTitleRename();
-});
-
 async function loadRoom() {
   const res = await fetch(`/api/rooms/${ROOM_ID}`, { credentials: 'include' });
   if (res.status === 401) {
     window.location.href = '/';
-    return;
+    return false;
   }
   if (res.status === 403 || res.status === 404) {
-    await showAppAlert('Комната не найдена или нет доступа', { title: 'Нет доступа' });
+    sessionStorage.setItem('lc_room_kick', '1');
+    sessionStorage.setItem(
+      'lc_room_kick_msg',
+      'Вас исключили из комнаты, или комната была удалена.'
+    );
     window.location.href = '/home';
-    return;
+    return false;
   }
   const data = await res.json();
   roomTitleEl.textContent = data.title || `Комната #${data.id}`;
@@ -486,6 +441,9 @@ async function loadRoom() {
     end: c.end,
     body: c.body || '',
   }));
+  if (isRoomOwner()) btnRoomSettings.hidden = false;
+  else btnRoomSettings.hidden = true;
+  return true;
 }
 
 function saveState() {
@@ -972,6 +930,11 @@ document.addEventListener(
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (roomSettingsPanel && roomSettingsPanel.style.display === 'flex') {
+      e.preventDefault();
+      closeRoomSettings();
+      return;
+    }
     if (isCommentPopoverOpen()) {
       e.preventDefault();
       commitCommentPopover();
@@ -1125,6 +1088,244 @@ document.addEventListener('selectionchange', () => {
   if (document.activeElement === textInput) scheduleUpdateAddCommentButton();
 });
 
+function closeRoomSettings() {
+  roomSettingsBackdrop.style.display = 'none';
+  roomSettingsPanel.style.display = 'none';
+  roomSettingsBackdrop.setAttribute('aria-hidden', 'true');
+  roomSettingsPanel.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('app-modal-open');
+}
+
+function openRoomSettings() {
+  roomSettingsBackdrop.style.display = 'block';
+  roomSettingsPanel.style.display = 'flex';
+  roomSettingsBackdrop.setAttribute('aria-hidden', 'false');
+  roomSettingsPanel.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('app-modal-open');
+  void refreshRoomSettingsPanel();
+}
+
+async function refreshRoomSettingsPanel() {
+  if (!isRoomOwner()) return;
+  settingsSaveHint.style.display = 'none';
+  settingsPwErr.style.display = 'none';
+  const res = await fetch(`/api/rooms/${ROOM_ID}/settings`, { credentials: 'include' });
+  if (res.status === 401) {
+    window.location.href = '/';
+    return;
+  }
+  if (!res.ok) {
+    await showAppAlert('Не удалось загрузить настройки', { title: 'Ошибка' });
+    return;
+  }
+  const s = await res.json();
+  settingsRoomTitle.value = s.title || '';
+  settingsInviteCode.textContent = s.invite_code || '';
+  const link = s.invite_link || '';
+  settingsInviteLink.href = link || '#';
+  settingsInviteLink.textContent = link;
+  if (s.has_password) {
+    settingsPwHint.textContent =
+      'Сейчас установлен пароль. Чтобы сменить — введите старый, затем новый (с подтверждением).';
+    settingsOldPwWrap.style.display = '';
+  } else {
+    settingsPwHint.textContent =
+      'Пароль не задан — вход свободный. Чтобы закрыть комнату, задайте новый пароль ниже.';
+    settingsOldPwWrap.style.display = 'none';
+  }
+  if (!settingsPinOld) settingsPinOld = mountPin6(settingsPinOldHost);
+  else settingsPinOld.clear();
+  if (!settingsPinNew) settingsPinNew = mountPin6(settingsPinNewHost);
+  else settingsPinNew.clear();
+  if (!settingsPinNew2) settingsPinNew2 = mountPin6(settingsPinNew2Host);
+  else settingsPinNew2.clear();
+  settingsClearPassword.checked = false;
+  settingsMembers.innerHTML = '';
+  const ownerId = roomOwnerId;
+  (s.members || []).forEach((m) => {
+    const li = document.createElement('li');
+    li.className = 'settings-member';
+    const name = document.createElement('span');
+    name.className = 'settings-member-name';
+    name.textContent = m.username + (m.id === ownerId ? ' — создатель' : '');
+    li.appendChild(name);
+    if (m.id !== ownerId) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'settings-member-kick';
+      btn.setAttribute('aria-label', 'Исключить');
+      btn.innerHTML = '<span class="settings-kick-x" aria-hidden="true">×</span>';
+      btn.addEventListener('click', async () => {
+        const ok = await showAppConfirm({
+          title: 'Исключить участника',
+          message: `Исключить пользователя «${m.username}» из комнаты?`,
+          confirmText: 'Исключить',
+          cancelText: 'Отмена',
+          danger: true,
+        });
+        if (!ok) return;
+        const resKick = await fetch(`/api/rooms/${ROOM_ID}/members/${m.id}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        if (resKick.status === 401) {
+          window.location.href = '/';
+          return;
+        }
+        if (!resKick.ok) {
+          await showAppAlert('Не удалось исключить', { title: 'Ошибка' });
+          return;
+        }
+        await refreshRoomSettingsPanel();
+      });
+      li.appendChild(btn);
+    }
+    settingsMembers.appendChild(li);
+  });
+}
+
+btnRoomSettings.addEventListener('click', () => {
+  if (!isRoomOwner()) return;
+  openRoomSettings();
+});
+
+roomSettingsClose.addEventListener('click', () => closeRoomSettings());
+roomSettingsBackdrop.addEventListener('click', () => closeRoomSettings());
+
+settingsSaveTitle.addEventListener('click', async () => {
+  const t = settingsRoomTitle.value;
+  const res = await fetch(`/api/rooms/${ROOM_ID}/settings`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: t }),
+  });
+  if (res.status === 401) {
+    window.location.href = '/';
+    return;
+  }
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    await showAppAlert(typeof j.detail === 'string' ? j.detail : 'Не удалось сохранить', {
+      title: 'Ошибка',
+    });
+    return;
+  }
+  const s = await res.json();
+  const disp = s.title || `Комната #${ROOM_ID}`;
+  roomTitleEl.textContent = disp;
+  document.title = `${disp} — Live coding`;
+  settingsSaveHint.textContent = 'Имя сохранено';
+  settingsSaveHint.style.display = '';
+});
+
+settingsSavePassword.addEventListener('click', async () => {
+  settingsPwErr.style.display = 'none';
+  const clear = settingsClearPassword.checked;
+  const oldv = settingsPinOld ? settingsPinOld.getValue() : '';
+  const n1 = settingsPinNew ? settingsPinNew.getValue() : '';
+  const n2 = settingsPinNew2 ? settingsPinNew2.getValue() : '';
+
+  let body = {};
+  if (clear) {
+    body = { clear_password: true, old_password: oldv.length === 6 ? oldv : null };
+  } else if (n1.length > 0 || n2.length > 0) {
+    if (n1.length !== 6 || n2.length !== 6) {
+      settingsPwErr.style.display = '';
+      settingsPwErr.textContent = 'Новый пароль: по 6 символов в обеих панелях';
+      return;
+    }
+    if (n1 !== n2) {
+      settingsPwErr.style.display = '';
+      settingsPwErr.textContent = 'Новый пароль и подтверждение не совпадают';
+      return;
+    }
+    const had = settingsOldPwWrap.style.display !== 'none';
+    body = {
+      new_password: n1,
+      new_password_confirm: n2,
+      old_password: had && oldv.length === 6 ? oldv : null,
+    };
+  } else {
+    settingsPwErr.style.display = '';
+    settingsPwErr.textContent = 'Отметьте «Снять пароль» или введите новый пароль';
+    return;
+  }
+
+  const res = await fetch(`/api/rooms/${ROOM_ID}/settings`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    window.location.href = '/';
+    return;
+  }
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    settingsPwErr.style.display = '';
+    settingsPwErr.textContent = typeof j.detail === 'string' ? j.detail : 'Не удалось сохранить';
+    return;
+  }
+  settingsSaveHint.textContent = 'Пароль обновлён';
+  settingsSaveHint.style.display = '';
+  await refreshRoomSettingsPanel();
+});
+
+settingsCopyCode.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(settingsInviteCode.textContent || '');
+    settingsSaveHint.textContent = 'Код скопирован';
+    settingsSaveHint.style.display = '';
+  } catch (_) {
+    await showAppAlert('Не удалось скопировать', { title: 'Ошибка' });
+  }
+});
+
+settingsCopyLink.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(settingsInviteLink.href || '');
+    settingsSaveHint.textContent = 'Ссылка скопирована';
+    settingsSaveHint.style.display = '';
+  } catch (_) {
+    await showAppAlert('Не удалось скопировать', { title: 'Ошибка' });
+  }
+});
+
+settingsDeleteRoom.addEventListener('click', async () => {
+  const ok = await showAppConfirm({
+    title: 'Удалить комнату',
+    message: `Удалить комнату «${roomTitleEl.textContent}»?\n\nВсе файлы в ней будут удалены.`,
+    confirmText: 'Удалить',
+    cancelText: 'Отмена',
+    danger: true,
+  });
+  if (!ok) return;
+  const res = await fetch(`/api/rooms/${ROOM_ID}`, { method: 'DELETE', credentials: 'include' });
+  if (res.status === 401) {
+    window.location.href = '/';
+    return;
+  }
+  if (!res.ok) {
+    await showAppAlert('Не удалось удалить', { title: 'Ошибка' });
+    return;
+  }
+  window.location.href = '/home';
+});
+
+btnBack.addEventListener('click', async (e) => {
+  e.preventDefault();
+  if (!isRoomOwner()) {
+    try {
+      await fetch(`/api/rooms/${ROOM_ID}/leave`, { method: 'POST', credentials: 'include' });
+    } catch (_) {
+      /* */
+    }
+  }
+  window.location.href = '/home';
+});
+
 async function boot() {
   const me = await getMe();
   if (!me || !me.id) {
@@ -1132,10 +1333,35 @@ async function boot() {
     return;
   }
   currentUserId = me.id;
-  await loadRoom();
+  const ok = await loadRoom();
+  if (!ok) return;
   renderTabs();
   applyActiveFileContent();
   updateAddCommentButtonState();
+
+  const sp = new URLSearchParams(window.location.search);
+  if (sp.get('settings') === '1' && isRoomOwner()) {
+    openRoomSettings();
+    const u = new URL(window.location.href);
+    u.searchParams.delete('settings');
+    window.history.replaceState({}, '', u.pathname + (u.search ? u.search : ''));
+  }
+
+  roomPollTimer = window.setInterval(async () => {
+    const res = await fetch(`/api/rooms/${ROOM_ID}`, { credentials: 'include' });
+    if (res.status === 401) {
+      window.location.href = '/';
+      return;
+    }
+    if (res.status === 403 || res.status === 404) {
+      sessionStorage.setItem('lc_room_kick', '1');
+      sessionStorage.setItem(
+        'lc_room_kick_msg',
+        'Вас исключили из комнаты, или комната была удалена.'
+      );
+      window.location.href = '/home';
+    }
+  }, 15000);
 }
 
 boot();

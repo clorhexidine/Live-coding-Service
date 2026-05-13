@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import DATABASE_URL, Base, engine
-from app.migrate import run_sqlite_migrations
+from app.migrate import backfill_room_invite_codes, run_sqlite_migrations
 from app.routers import auth, rooms
 
 logger = logging.getLogger("uvicorn.error")
@@ -50,6 +50,7 @@ def startup():
 
     Base.metadata.create_all(bind=engine)
     run_sqlite_migrations()
+    backfill_room_invite_codes()
 
 
 @app.get("/")
@@ -65,6 +66,11 @@ async def home():
 @app.get("/room/{room_id}")
 async def room_page(room_id: int):
     return FileResponse(STATIC_DIR / "room.html")
+
+
+@app.get("/join/{code}")
+async def join_page(code: str):
+    return FileResponse(STATIC_DIR / "join.html")
 
 
 # Старый путь без авторизации (для совместимости)

@@ -13,8 +13,9 @@
     <header class="room-topbar">
       <div class="room-topbar-row">
         <a href="/home" class="btn-back" id="btn-back">← На главную</a>
+        <button type="button" class="btn-room-settings" id="btn-room-settings" hidden title="Настройки комнаты" aria-label="Настройки комнаты">&#9881;</button>
         <div class="room-title-inline-host" id="room-title-inline-host">
-          <span class="room-title room-title--inline" id="room-title" title="Двойной щелчок — переименовать (только владелец)">Комната</span>
+          <span class="room-title room-title--inline" id="room-title">Комната</span>
         </div>
       </div>
       <div class="room-desc-block">
@@ -57,9 +58,66 @@
     <button type="button" class="tab-menu-item" data-action="edit-comment">Редактировать</button>
     <button type="button" class="tab-menu-item" data-action="delete-comment">Удалить</button>
   </div>
+  <div class="room-settings-backdrop" id="room-settings-backdrop" style="display:none" aria-hidden="true"></div>
+  <aside class="room-settings-panel" id="room-settings-panel" style="display:none" aria-hidden="true">
+    <div class="room-settings-head">
+      <h2 class="room-settings-title">Настройки комнаты</h2>
+      <button type="button" class="room-settings-close" id="room-settings-close" aria-label="Закрыть">×</button>
+    </div>
+    <div class="room-settings-body">
+      <div class="form-group">
+        <label for="settings-room-title">Имя комнаты</label>
+        <div class="settings-title-row">
+          <input id="settings-room-title" type="text" maxlength="255" autocomplete="off">
+          <button type="button" class="btn-toolbar" id="settings-save-title">Сохранить</button>
+        </div>
+      </div>
+      <div class="settings-invite-block">
+        <span class="label-like">Код приглашения</span>
+        <div class="settings-invite-row">
+          <code id="settings-invite-code" class="settings-code"></code>
+          <button type="button" class="btn-toolbar" id="settings-copy-code">Копировать</button>
+        </div>
+        <span class="label-like">Ссылка</span>
+        <div class="settings-invite-row">
+          <a id="settings-invite-link" class="settings-invite-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+          <button type="button" class="btn-toolbar" id="settings-copy-link">Копировать</button>
+        </div>
+      </div>
+      <div class="settings-password-section">
+        <h3 class="modal-subtitle">Пароль комнаты</h3>
+        <p class="settings-muted" id="settings-pw-hint"></p>
+        <div class="form-group" id="settings-old-pw-wrap" style="display:none">
+          <span class="label-like">Текущий пароль</span>
+          <div class="pin6-wrap" id="settings-pin-old"></div>
+        </div>
+        <div class="form-group">
+          <span class="label-like">Новый пароль</span>
+          <div class="pin6-wrap" id="settings-pin-new"></div>
+        </div>
+        <div class="form-group">
+          <span class="label-like">Подтверждение нового пароля</span>
+          <div class="pin6-wrap" id="settings-pin-new2"></div>
+        </div>
+        <label class="settings-check">
+          <input type="checkbox" id="settings-clear-password">
+          <span>Снять пароль (открытый доступ)</span>
+        </label>
+        <p class="field-hint field-hint--error" id="settings-pw-err" style="display:none"></p>
+        <button type="button" class="btn-primary-lg btn-block" id="settings-save-password">Сохранить пароль</button>
+      </div>
+      <div class="settings-members-section">
+        <h3 class="modal-subtitle">Участники</h3>
+        <ul class="settings-members" id="settings-members"></ul>
+      </div>
+      <button type="button" class="btn-toolbar btn-block btn-danger-outline" id="settings-delete-room">Удалить комнату</button>
+      <p class="field-hint" id="settings-save-hint" style="display:none"></p>
+    </div>
+  </aside>
   <script src="/static/auth.js"></script>
   <script src="/static/theme.js"></script>
   <script src="/static/modal.js"></script>
+  <script src="/static/pin-input.js"></script>
   <script src="/static/room.js"></script>
 </body>
 </html>

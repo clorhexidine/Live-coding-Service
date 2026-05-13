@@ -32,6 +32,8 @@ class Room(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=True)
     description = Column(Text, nullable=True)
+    invite_code = Column(String(8), nullable=True, unique=True, index=True)
+    password_hash = Column(String(255), nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     active_file_client_id = Column(String(64), nullable=True)
     next_file_index = Column(Integer, default=2, nullable=False)

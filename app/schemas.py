@@ -73,6 +73,7 @@ class RoomOut(BaseModel):
 class RoomCreate(BaseModel):
     title: str | None = Field(None, max_length=255)
     description: str | None = Field(None, max_length=16000)
+    password: str | None = Field(None, min_length=6, max_length=6)
 
 
 class RoomUpdate(BaseModel):
@@ -84,5 +85,61 @@ class RoomListItem(BaseModel):
     id: int
     title: str | None
     description: str | None
+    owner_id: int
 
     model_config = {"from_attributes": True}
+
+
+class RoomCreatedOut(BaseModel):
+    id: int
+    title: str | None
+    description: str | None
+    owner_id: int
+    invite_code: str
+    invite_link: str
+
+    model_config = {"from_attributes": True}
+
+
+class RoomLookupOut(BaseModel):
+    room_id: int
+    title: str | None
+    has_password: bool
+    is_member: bool
+
+
+class RoomJoinIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=16)
+    password: str | None = Field(None, max_length=6)
+
+
+class RoomMemberOut(BaseModel):
+    id: int
+    username: str
+
+    model_config = {"from_attributes": True}
+
+
+class RoomSettingsOut(BaseModel):
+    title: str | None
+    description: str | None
+    invite_code: str
+    invite_link: str
+    has_password: bool
+    members: list[RoomMemberOut]
+
+
+class RoomSettingsPatch(BaseModel):
+    title: str | None = Field(None, max_length=255)
+    old_password: str | None = Field(None, max_length=64)
+    new_password: str | None = Field(None, min_length=6, max_length=6)
+    new_password_confirm: str | None = Field(None, max_length=6)
+    clear_password: bool = False
+
+    @model_validator(mode="after")
+    def passwords(self):
+        if self.new_password and self.new_password != (self.new_password_confirm or ""):
+            raise ValueError("Новый пароль и подтверждение не совпадают")
+        if self.clear_password and self.new_password:
+            raise ValueError("Нельзя одновременно снять пароль и задать новый")
+        return self
