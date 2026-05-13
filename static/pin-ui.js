@@ -1,13 +1,14 @@
 (function () {
   /**
-   * Шесть отдельных ячеек для кода/пароля комнаты.
+   * Шесть ячеек; вставка из буфера заполняет все позиции (как одна строка).
    * @param {HTMLElement} mount
    * @param {{ ariaLabel?: string }} [opts]
    */
   function createPinRow(mount, opts) {
-    const aria = (opts && opts.ariaLabel) || 'Символ кода';
+    const aria = (opts && opts.ariaLabel) || 'Код';
     mount.textContent = '';
-    mount.classList.add('pin-row');
+    mount.setAttribute('role', 'group');
+    mount.setAttribute('aria-label', aria);
     /** @type {HTMLInputElement[]} */
     const inputs = [];
     for (let i = 0; i < 6; i++) {
@@ -18,10 +19,31 @@
       inp.setAttribute('autocomplete', 'off');
       inp.setAttribute('spellcheck', 'false');
       inp.setAttribute('inputmode', 'text');
-      inp.setAttribute('aria-label', `${aria}, позиция ${i + 1}`);
+      inp.setAttribute('aria-label', `${aria}, символ ${i + 1} из 6`);
       inputs.push(inp);
       mount.appendChild(inp);
     }
+
+    function applyPastedText(raw) {
+      const text = String(raw || '')
+        .replace(/\s/g, '')
+        .replace(/[\u200b-\u200d\ufeff]/g, '')
+        .slice(0, 6);
+      for (let k = 0; k < 6; k++) inputs[k].value = text[k] || '';
+      const last = Math.min(Math.max(text.length - 1, 0), 5);
+      inputs[last].focus();
+    }
+
+    /** @param {ClipboardEvent} e */
+    function onHostPasteCapture(e) {
+      const text = e.clipboardData?.getData('text');
+      if (text == null || !String(text).replace(/\s/g, '')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      applyPastedText(text);
+    }
+
+    mount.addEventListener('paste', onHostPasteCapture, true);
 
     function gather() {
       return inputs.map((x) => x.value).join('');
@@ -71,14 +93,6 @@
           inp.value = v.slice(-1) || '';
         }
         if (inp.value && idx < 5) inputs[idx + 1].focus();
-      });
-
-      inp.addEventListener('paste', (e) => {
-        e.preventDefault();
-        const text = (e.clipboardData.getData('text') || '').replace(/\s/g, '').slice(0, 6);
-        for (let k = 0; k < 6; k++) inputs[k].value = text[k] || '';
-        const nextPos = Math.min(Math.max(text.length - 1, 0), 5);
-        inputs[nextPos].focus();
       });
     });
 

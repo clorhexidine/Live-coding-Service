@@ -33,16 +33,13 @@
   <div id="create-room-overlay" class="room-settings-overlay" style="display:none">
     <div class="room-settings-dialog room-settings-dialog--create" role="dialog" aria-modal="true" aria-labelledby="cr-title">
       <h2 id="cr-title" class="room-settings-h2">Новая комната</h2>
-      <div class="form-group room-settings-field">
-        <label for="create-title">Название (необязательно)</label>
-        <input id="create-title" type="text" maxlength="255" placeholder="По умолчанию — как раньше" />
+      <div class="create-room-block">
+        <div class="room-settings-label">Название</div>
+        <input id="create-title" type="text" maxlength="255" class="room-settings-title-input" />
       </div>
-      <div class="room-settings-section">
-        <div class="room-settings-label">Пароль комнаты (необязательно, 6 символов)</div>
-        <span class="room-settings-hint">Оставьте пустым — вход без пароля</span>
+      <div class="create-room-block">
+        <div class="room-settings-label">Пароль комнаты</div>
         <div id="create-pw-pin" class="pin-row-host"></div>
-        <span class="room-settings-hint">Подтверждение</span>
-        <div id="create-pw2-pin" class="pin-row-host"></div>
       </div>
       <p class="room-settings-error" id="create-err" style="display:none"></p>
       <div class="room-settings-actions room-settings-actions--row">

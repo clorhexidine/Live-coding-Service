@@ -11,11 +11,12 @@
 <body>
   <div class="app-root app-root--room">
     <header class="room-topbar">
-      <div class="room-topbar-row">
+      <div class="room-topbar-row room-topbar-row--main">
         <a href="/home" class="btn-back" id="btn-back">← На главную</a>
-        <div class="room-title-inline-host" id="room-title-inline-host">
+        <span class="room-title room-title--inline room-title--topbar" id="room-title">Комната</span>
+        <div class="room-topbar-end">
           <button type="button" class="btn-room-gear btn-room-gear--toolbar" id="btn-room-settings" hidden aria-label="Настройки комнаты">⚙</button>
-          <span class="room-title room-title--inline" id="room-title">Комната</span>
+          <button type="button" class="btn-room-leave-toolbar" id="btn-room-leave" hidden>Выйти из комнаты</button>
         </div>
       </div>
       <div class="room-desc-block">

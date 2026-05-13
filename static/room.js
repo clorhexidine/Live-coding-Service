@@ -10,7 +10,6 @@ const commentGutter = document.getElementById('comment-gutter');
 const highlightPre = document.getElementById('editor-highlight');
 const tabsContainer = document.getElementById('tabs');
 const tabAddButton = document.getElementById('tab-add');
-const roomTitleHost = document.getElementById('room-title-inline-host');
 const roomTitleEl = document.getElementById('room-title');
 const roomDescEl = document.getElementById('room-description');
 const roomDescHint = document.getElementById('room-desc-hint');
@@ -21,8 +20,8 @@ const commentSnippet = document.getElementById('comment-snippet');
 const commentBodyInput = document.getElementById('comment-body-input');
 const commentPopoverLabel = document.getElementById('comment-popover-label');
 const commentCtxMenu = document.getElementById('comment-ctx-menu');
-const btnBack = document.getElementById('btn-back');
 const btnRoomSettings = document.getElementById('btn-room-settings');
+const btnRoomLeave = document.getElementById('btn-room-leave');
 
 let files = [];
 let activeFileId = null;
@@ -388,6 +387,11 @@ async function loadRoom() {
     const showGear = !!data.is_owner;
     btnRoomSettings.hidden = !showGear;
     btnRoomSettings.style.display = showGear ? 'inline-flex' : 'none';
+  }
+  if (btnRoomLeave) {
+    const showLeave = !data.is_owner;
+    btnRoomLeave.hidden = !showLeave;
+    btnRoomLeave.style.display = showLeave ? 'inline-flex' : 'none';
   }
   roomDescEl.value = data.description || '';
   const canEditDesc = currentUserId != null && roomOwnerId === currentUserId;
@@ -1071,22 +1075,6 @@ async function boot() {
   applyActiveFileContent();
   updateAddCommentButtonState();
 
-  if (btnBack) {
-    btnBack.addEventListener('click', async (e) => {
-      e.preventDefault();
-      if (isRoomOwner()) {
-        window.location.href = '/home';
-        return;
-      }
-      try {
-        await fetch(`/api/rooms/${ROOM_ID}/leave`, { method: 'POST', credentials: 'include' });
-      } catch (_) {
-        /* сеть */
-      }
-      window.location.href = '/home';
-    });
-  }
-
   if (btnRoomSettings) {
     btnRoomSettings.addEventListener('click', () => {
       openRoomSettingsModal(ROOM_ID, {
@@ -1099,6 +1087,35 @@ async function boot() {
           applyActiveFileContent();
         },
       });
+    });
+  }
+
+  if (btnRoomLeave) {
+    btnRoomLeave.addEventListener('click', async () => {
+      const ok = await showAppConfirm({
+        title: 'Покинуть комнату',
+        message: 'Вы выйдете из комнаты и потеряете к ней доступ, пока вас снова не пригласят.',
+        confirmText: 'Выйти',
+        cancelText: 'Отмена',
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        const res = await fetch(`/api/rooms/${ROOM_ID}/leave`, { method: 'POST', credentials: 'include' });
+        if (res.status === 401) {
+          window.location.href = '/?next=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          await showAppAlert(typeof j.detail === 'string' ? j.detail : 'Не удалось выйти', { title: 'Ошибка' });
+          return;
+        }
+      } catch (_) {
+        await showAppAlert('Не удалось выйти из комнаты', { title: 'Ошибка' });
+        return;
+      }
+      window.location.href = '/home';
     });
   }
 

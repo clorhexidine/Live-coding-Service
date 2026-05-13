@@ -14,7 +14,6 @@ async function openRoomSettingsModal(roomId, hooks) {
       <button type="button" class="room-settings-close" aria-label="Закрыть">×</button>
       <h2 id="rs-title" class="room-settings-h2">Настройки комнаты</h2>
       <div class="room-settings-section">
-        <div class="room-settings-label">Приглашение</div>
         <div class="room-settings-invite-row">
           <a class="room-settings-invite-link" id="rs-invite-link" href="#" target="_blank" rel="noopener noreferrer"></a>
           <button type="button" class="btn-secondary btn-compact" id="rs-copy-link">Копировать ссылку</button>
@@ -24,9 +23,9 @@ async function openRoomSettingsModal(roomId, hooks) {
           <button type="button" class="btn-secondary btn-compact" id="rs-copy-code">Копировать код</button>
         </div>
       </div>
-      <div class="form-group room-settings-field">
-        <label for="rs-title-input">Название</label>
-        <input id="rs-title-input" type="text" maxlength="255" />
+      <div class="room-settings-section">
+        <div class="room-settings-label">Название</div>
+        <input id="rs-title-input" type="text" maxlength="255" class="room-settings-title-input" />
       </div>
       <div class="room-settings-section" id="rs-pwd-section">
         <div class="room-settings-label">Пароль комнаты</div>
@@ -43,8 +42,6 @@ async function openRoomSettingsModal(roomId, hooks) {
         <div id="rs-new-wrap" class="room-settings-pin-block">
           <span class="room-settings-hint">Новый пароль (6 символов, необязательно)</span>
           <div id="rs-new-pin" class="pin-row-host"></div>
-          <span class="room-settings-hint">Подтверждение</span>
-          <div id="rs-new-pin2" class="pin-row-host"></div>
         </div>
       </div>
       <div class="room-settings-section">
@@ -70,10 +67,8 @@ async function openRoomSettingsModal(roomId, hooks) {
 
   const oldPinHost = overlay.querySelector('#rs-old-pin');
   const newPinHost = overlay.querySelector('#rs-new-pin');
-  const newPin2Host = overlay.querySelector('#rs-new-pin2');
   const oldPin = window.createPinRow(oldPinHost, { ariaLabel: 'Текущий пароль комнаты' });
   const newPin = window.createPinRow(newPinHost, { ariaLabel: 'Новый пароль' });
-  const newPin2 = window.createPinRow(newPin2Host, { ariaLabel: 'Подтверждение пароля' });
 
   let fullInviteUrl = '';
   let hasRoomPassword = false;
@@ -107,7 +102,7 @@ async function openRoomSettingsModal(roomId, hooks) {
   function syncPasswordUi() {
     const clr = clearPw.checked;
     if (hasRoomPassword) {
-      oldWrap.style.display = clr || newPin.getValue() || newPin2.getValue() ? 'block' : 'none';
+      oldWrap.style.display = clr || newPin.getValue() ? 'block' : 'none';
     } else {
       oldWrap.style.display = 'none';
     }
@@ -115,13 +110,11 @@ async function openRoomSettingsModal(roomId, hooks) {
   }
 
   clearPw.addEventListener('change', syncPasswordUi);
-  [newPinHost, newPin2Host].forEach((h) =>
-    h.addEventListener('input', () => {
-      if (hasRoomPassword && !clearPw.checked) {
-        oldWrap.style.display = newPin.getValue() || newPin2.getValue() ? 'block' : 'none';
-      }
-    })
-  );
+  newPinHost.addEventListener('input', () => {
+    if (hasRoomPassword && !clearPw.checked) {
+      oldWrap.style.display = newPin.getValue() ? 'block' : 'none';
+    }
+  });
 
   async function load() {
     const res = await fetch(`/api/rooms/${roomId}/settings`, { credentials: 'include' });
@@ -148,7 +141,6 @@ async function openRoomSettingsModal(roomId, hooks) {
     clearPw.checked = false;
     oldPin.clear();
     newPin.clear();
-    newPin2.clear();
     syncPasswordUi();
     renderMembers(data.members || []);
   }
@@ -235,7 +227,6 @@ async function openRoomSettingsModal(roomId, hooks) {
     }
 
     const np = newPin.getValue();
-    const nc = newPin2.getValue();
     const oldp = oldPin.getValue();
 
     if (clearPw.checked) {
@@ -243,13 +234,13 @@ async function openRoomSettingsModal(roomId, hooks) {
         body.clear_room_password = true;
         body.old_room_password = oldp;
       }
-    } else if (np || nc) {
-      if (np.length !== 6 || np !== nc) {
-        showErr('Новый пароль: ровно 6 символов и совпадение в обоих рядах.');
+    } else if (np) {
+      if (np.length !== 6) {
+        showErr('Новый пароль: ровно 6 символов.');
         return;
       }
       body.new_room_password = np;
-      body.new_room_password_confirm = nc;
+      body.new_room_password_confirm = np;
       if (hasRoomPassword) body.old_room_password = oldp;
     }
 

@@ -200,6 +200,14 @@ def join_room(
     return {"ok": True, "room_id": room.id, "already_member": False}
 
 
+@router.get("/default-title", response_model=dict)
+def get_default_room_title(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return {"title": _default_room_title(db, user.id)}
+
+
 def _require_room_owner(room: Room, user: User) -> None:
     if room.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Только владелец может изменять или удалять комнату")

@@ -12,10 +12,7 @@ let joinCodePin = null;
 /** @type {ReturnType<typeof createPinRow> | null} */
 let createPwPin = null;
 /** @type {ReturnType<typeof createPinRow> | null} */
-let createPw2Pin = null;
-/** @type {ReturnType<typeof createPinRow> | null} */
 let joinPwPin = null;
-let pendingJoinRoomId = null;
 
 function showJoinHint(msg, isError) {
   if (!joinCodeHint) return;
@@ -38,22 +35,32 @@ async function requireAuth() {
   return me;
 }
 
-function openCreateModal() {
-  document.getElementById('create-title').value = '';
+async function openCreateModal() {
+  const titleInput = document.getElementById('create-title');
+  let placeholder = 'Комната 1';
+  try {
+    const res = await fetch('/api/rooms/default-title', { credentials: 'include' });
+    if (res.ok) {
+      const j = await res.json();
+      if (j && j.title) placeholder = j.title;
+    }
+  } catch (_) {
+    /* сеть */
+  }
+  titleInput.placeholder = placeholder;
+  titleInput.value = '';
   createPwPin.clear();
-  createPw2Pin.clear();
   document.getElementById('create-err').style.display = 'none';
   document.getElementById('create-err').textContent = '';
   createOverlay.style.display = '';
-  createPwPin.focus();
+  titleInput.focus();
 }
 
 function closeCreateModal() {
   createOverlay.style.display = 'none';
 }
 
-function openJoinPwModal(roomId) {
-  pendingJoinRoomId = roomId;
+function openJoinPwModal() {
   joinPwPin.clear();
   document.getElementById('home-join-pw-err').style.display = 'none';
   joinPwOverlay.style.display = '';
@@ -62,7 +69,6 @@ function openJoinPwModal(roomId) {
 
 function closeJoinPwModal() {
   joinPwOverlay.style.display = 'none';
-  pendingJoinRoomId = null;
 }
 
 async function postJoinRoom(body) {
@@ -93,7 +99,7 @@ async function tryJoinAfterPreview(preview, codeUpper) {
   }
   if (preview.has_room_password) {
     window.__homeJoinCode = codeUpper;
-    openJoinPwModal(preview.room_id);
+    openJoinPwModal();
     return;
   }
   await postJoinRoom({ code: codeUpper });
@@ -151,11 +157,8 @@ async function loadRooms() {
     const displayTitle = r.title || `Комната #${r.id}`;
     const isOwner = r.owner_id === currentUserId;
 
-    const titleHost = document.createElement('div');
-    titleHost.className = 'room-title-host';
-
-    const leftBlock = document.createElement('div');
-    leftBlock.className = 'room-left-block';
+    const main = document.createElement('div');
+    main.className = 'room-item-main';
 
     const titleStack = document.createElement('div');
     titleStack.className = 'room-title-stack';
@@ -183,28 +186,16 @@ async function loadRooms() {
       titleStack.appendChild(desc);
     }
 
-    const colDivider = document.createElement('div');
-    colDivider.className = 'room-col-divider';
-    colDivider.setAttribute('aria-hidden', 'true');
+    main.appendChild(titleStack);
 
-    const openLink = document.createElement('a');
-    openLink.className = 'room-open-link';
-    openLink.href = `/room/${r.id}`;
-    openLink.textContent = 'Открыть';
-
-    leftBlock.appendChild(titleStack);
-    leftBlock.appendChild(colDivider);
-    leftBlock.appendChild(openLink);
-    titleHost.appendChild(leftBlock);
-
-    const actions = document.createElement('div');
-    actions.className = 'room-actions';
+    const spine = document.createElement('div');
+    spine.className = 'room-item-spine';
 
     if (isOwner) {
       const btnGear = document.createElement('button');
       btnGear.type = 'button';
-      btnGear.className = 'btn-room-action btn-room-gear';
-      btnGear.title = 'Настройки комнаты';
+      btnGear.className = 'btn-room-gear';
+      btnGear.title = 'Настройки';
       btnGear.setAttribute('aria-label', 'Настройки комнаты');
       btnGear.textContent = '⚙';
       btnGear.addEventListener('click', async (e) => {
@@ -223,11 +214,60 @@ async function loadRooms() {
           },
         });
       });
-      actions.appendChild(btnGear);
+      spine.appendChild(btnGear);
     }
 
-    li.appendChild(titleHost);
-    li.appendChild(actions);
+    const end = document.createElement('div');
+    end.className = 'room-item-end';
+
+    if (isOwner) {
+      const btnDelete = document.createElement('button');
+      btnDelete.type = 'button';
+      btnDelete.className = 'btn-room-action btn-room-action--danger';
+      btnDelete.textContent = 'Удалить';
+      btnDelete.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const ok = await showAppConfirm({
+          title: 'Удалить комнату',
+          message: `Удалить комнату «${displayTitle}»?\n\nВсе файлы в ней будут удалены.`,
+          confirmText: 'Удалить',
+          cancelText: 'Отмена',
+          danger: true,
+        });
+        if (!ok) return;
+        const dres = await fetch(`/api/rooms/${r.id}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        if (dres.status === 401) {
+          window.location.href = '/';
+          return;
+        }
+        if (!dres.ok) {
+          await showAppAlert('Не удалось удалить комнату', { title: 'Ошибка' });
+          return;
+        }
+        li.remove();
+        if (roomList.children.length === 0) {
+          loading.style.display = '';
+          loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
+        }
+      });
+      end.appendChild(btnDelete);
+    }
+
+    li.appendChild(main);
+    if (isOwner) {
+      li.appendChild(spine);
+      li.appendChild(end);
+    }
+
+    li.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      window.location.href = `/room/${r.id}`;
+    });
+
     roomList.appendChild(li);
   });
 }
@@ -237,16 +277,15 @@ async function submitCreateRoom() {
   err.style.display = 'none';
   const titleRaw = document.getElementById('create-title').value.trim();
   const p = createPwPin.getValue();
-  const pc = createPw2Pin.getValue();
-  if ((p || pc) && (p.length !== 6 || p !== pc)) {
-    err.textContent = 'Пароль: 6 символов и совпадение с подтверждением.';
+  if (p && p.length !== 6) {
+    err.textContent = 'Пароль: ровно 6 символов или оставьте ячейки пустыми.';
     err.style.display = 'block';
     return;
   }
   const body = {
     title: titleRaw || null,
     password: p || null,
-    password_confirm: pc || null,
+    password_confirm: p || null,
   };
   const res = await fetch('/api/rooms', {
     method: 'POST',
@@ -286,7 +325,6 @@ function bootKickedNotice() {
 (async () => {
   joinCodePin = window.createPinRow(joinCodeHost, { ariaLabel: 'Код комнаты' });
   createPwPin = window.createPinRow(document.getElementById('create-pw-pin'), { ariaLabel: 'Пароль комнаты' });
-  createPw2Pin = window.createPinRow(document.getElementById('create-pw2-pin'), { ariaLabel: 'Подтверждение пароля' });
   joinPwPin = window.createPinRow(document.getElementById('home-join-pw-pin'), { ariaLabel: 'Пароль комнаты' });
 
   await requireAuth();
@@ -314,14 +352,13 @@ function bootKickedNotice() {
   document.getElementById('home-join-pw-submit').addEventListener('click', async () => {
     const pw = joinPwPin.getValue();
     if (pw.length !== 6) {
-      const e = document.getElementById('home-join-pw-err');
-      e.textContent = 'Введите пароль из 6 символов.';
-      e.style.display = 'block';
+      const eEl = document.getElementById('home-join-pw-err');
+      eEl.textContent = 'Введите пароль из 6 символов.';
+      eEl.style.display = 'block';
       return;
     }
     const code = window.__homeJoinCode;
-    const ok = await postJoinRoom({ code, password: pw });
-    if (ok) closeJoinPwModal();
+    await postJoinRoom({ code, password: pw });
   });
 
   document.getElementById('btn-logout').addEventListener('click', async () => {
