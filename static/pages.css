@@ -1307,7 +1307,7 @@ body.app-modal-open {
 .room-settings-actions--row {
   flex-direction: row;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 10px;
 }
 
