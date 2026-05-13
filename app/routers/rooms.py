@@ -1,15 +1,16 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import hash_password, verify_password
-from app.database import get_db
-from app.deps import get_current_user
+from app.auth import decode_token, hash_password, verify_password
+from app.database import SessionLocal, get_db
+from app.deps import COOKIE_NAME, get_current_user
 from app.invites import new_invite_code, new_invite_token
 from app.models import Room, RoomComment, RoomFile, User, user_rooms
+from app.realtime_hub import hub
 from app.schemas import (
     CommentOut,
     JoinPreviewOut,
@@ -351,25 +352,7 @@ def create_room(
     return room
 
 
-@router.get("/{room_id}", response_model=RoomOut)
-def get_room(
-    room_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    room = _get_room_or_403(db, user, room_id)
-    return _room_to_out(db, room, user)
-
-
-@router.put("/{room_id}/state", response_model=RoomOut)
-def save_room_state(
-    room_id: int,
-    body: RoomStateIn,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    room = _get_room_or_403(db, user, room_id)
-
+def _apply_room_state_to_db(db: Session, room: Room, body: RoomStateIn) -> None:
     if not body.files:
         raise HTTPException(status_code=400, detail="Должен быть хотя бы один файл")
 
@@ -420,7 +403,39 @@ def save_room_state(
 
     db.commit()
     db.refresh(room)
+
+
+@router.get("/{room_id}", response_model=RoomOut)
+def get_room(
+    room_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    room = _get_room_or_403(db, user, room_id)
     return _room_to_out(db, room, user)
+
+
+@router.put("/{room_id}/state", response_model=RoomOut)
+def save_room_state(
+    room_id: int,
+    body: RoomStateIn,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    x_client_tab_id: str | None = Header(default=None, alias="X-Client-Tab-Id"),
+):
+    room = _get_room_or_403(db, user, room_id)
+    _apply_room_state_to_db(db, room, body)
+    out = _room_to_out(db, room, user)
+    seq = hub.next_seq(room_id)
+    payload = {
+        "type": "state",
+        "room": out.model_dump(mode="json"),
+        "seq": seq,
+        "sender_tab_id": (x_client_tab_id or "")[:80],
+    }
+    background_tasks.add_task(hub.broadcast_json, room_id, payload)
+    return out
 
 
 @router.patch("/{room_id}", response_model=RoomListItem)
@@ -444,13 +459,16 @@ def update_room(
 @router.delete("/{room_id}")
 def delete_room(
     room_id: int,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     room = _get_room_or_403(db, user, room_id)
     _require_room_owner(room, user)
+    rid = room.id
     db.delete(room)
     db.commit()
+    background_tasks.add_task(hub.broadcast_json, rid, {"type": "room_deleted", "seq": hub.next_seq(rid)})
     return {"ok": True}
 
 
@@ -479,6 +497,7 @@ def leave_room(
 def remove_room_member(
     room_id: int,
     member_user_id: int,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -497,4 +516,92 @@ def remove_room_member(
     if res.rowcount == 0:
         raise HTTPException(status_code=404, detail="Участник не найден в комнате")
     db.commit()
+    background_tasks.add_task(
+        hub.send_to_user_in_room,
+        room_id,
+        member_user_id,
+        {"type": "access_lost"},
+    )
     return {"ok": True}
+
+
+@router.websocket("/{room_id}/ws")
+async def room_websocket(websocket: WebSocket, room_id: int):
+    await websocket.accept()
+    token = websocket.cookies.get(COOKIE_NAME)
+    if not token:
+        await websocket.close(code=4401)
+        return
+    user_id = decode_token(token)
+    if user_id is None:
+        await websocket.close(code=4401)
+        return
+
+    db = SessionLocal()
+    try:
+        user = db.get(User, user_id)
+        if not user:
+            await websocket.close(code=4401)
+            return
+        room_inst = db.get(Room, room_id)
+        if not room_inst or not _user_has_room_access(db, user.id, room_id):
+            await websocket.close(code=4403)
+            return
+    finally:
+        db.close()
+
+    websocket.state.user_id = user.id
+    websocket.state.room_id = room_id
+    await hub.add(room_id, websocket)
+
+    try:
+        while True:
+            raw = await websocket.receive_json()
+            t = raw.get("type")
+            if t == "ping":
+                await websocket.send_json({"type": "pong"})
+                continue
+            if t != "state":
+                continue
+            tab_id = str(raw.get("tab_id") or "")[:80]
+            payload = raw.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            try:
+                body = RoomStateIn.model_validate(payload)
+            except Exception:
+                await websocket.send_json({"type": "error", "detail": "invalid_payload"})
+                continue
+
+            db = SessionLocal()
+            try:
+                room_inst = db.get(Room, room_id)
+                if not room_inst:
+                    await websocket.send_json({"type": "room_deleted"})
+                    break
+                if not _user_has_room_access(db, user.id, room_id):
+                    await websocket.send_json({"type": "access_lost"})
+                    break
+                _apply_room_state_to_db(db, room_inst, body)
+                out = _room_to_out(db, room_inst, user)
+            except HTTPException as he:
+                db.rollback()
+                await websocket.send_json({"type": "error", "detail": str(he.detail)})
+                continue
+            finally:
+                db.close()
+
+            seq = hub.next_seq(room_id)
+            await hub.broadcast_json(
+                room_id,
+                {
+                    "type": "state",
+                    "room": out.model_dump(mode="json"),
+                    "seq": seq,
+                    "sender_tab_id": tab_id,
+                },
+            )
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await hub.remove(room_id, websocket)

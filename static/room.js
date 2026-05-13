@@ -30,6 +30,18 @@ let comments = [];
 let roomOwnerId = null;
 let currentUserId = null;
 
+const CLIENT_TAB_ID =
+  window.crypto && window.crypto.randomUUID
+    ? window.crypto.randomUUID()
+    : `t-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+/** @type {WebSocket | null} */
+let roomSocket = null;
+let wsReconnectTimer = null;
+let wsOpen = false;
+let lastRemoteSeq = 0;
+const WS_SYNC_DEBOUNCE_MS = 40;
+
 const MAX_FILES = 20;
 const EDITOR_INDENT = '    ';
 const FILE_PREFIX = 'Файл ';
@@ -39,6 +51,7 @@ const HINT_NEED_SELECTION =
 let saveTimer = null;
 let descSaveTimer = null;
 let roomPollTimer = null;
+let roomWsPingTimer = null;
 
 /** @type {'add'|'edit'|null} */
 let commentPopoverMode = null;
@@ -368,18 +381,8 @@ function openCommentPopoverEdit(comment) {
   });
 }
 
-async function loadRoom() {
-  const res = await fetch(`/api/rooms/${ROOM_ID}`, { credentials: 'include' });
-  if (res.status === 401) {
-    window.location.href = '/?next=' + encodeURIComponent(window.location.pathname);
-    return;
-  }
-  if (res.status === 403 || res.status === 404) {
-    await showAppAlert('Комната не найдена или нет доступа', { title: 'Нет доступа' });
-    window.location.href = '/home';
-    return;
-  }
-  const data = await res.json();
+function applyRoomData(data, opts) {
+  const initialLoad = opts && opts.initialLoad;
   roomTitleEl.textContent = data.title || `Комната #${data.id}`;
   document.title = `${roomTitleEl.textContent} — Live coding`;
   roomOwnerId = data.owner_id;
@@ -402,20 +405,36 @@ async function loadRoom() {
   applyRoomTitleEditable();
   requestAnimationFrame(() => autoSizeRoomDesc());
 
-  files = (data.files || []).map((f) => ({
+  const nextFiles = (data.files || []).map((f) => ({
     id: f.id,
     name: f.name,
     content: f.content || '',
   }));
-  if (files.length === 0) {
-    files.push({
-      id: Date.now().toString(36),
-      name: 'Файл 1',
-      content: '',
-    });
+  if (nextFiles.length === 0) {
+    files = [
+      {
+        id: Date.now().toString(36),
+        name: 'Файл 1',
+        content: '',
+      },
+    ];
+  } else {
+    files = nextFiles;
   }
-  /* При каждом открытии комнаты — всегда первый файл в списке (порядок как с сервера). */
-  activeFileId = files[0].id;
+
+  if (initialLoad) {
+    activeFileId = files[0].id;
+  } else {
+    const prevActive = activeFileId;
+    const ids = new Set(files.map((f) => f.id));
+    if (prevActive && ids.has(prevActive)) {
+      activeFileId = prevActive;
+    } else if (data.active_file_id && ids.has(data.active_file_id)) {
+      activeFileId = data.active_file_id;
+    } else {
+      activeFileId = files[0].id;
+    }
+  }
 
   comments = (data.comments || []).map((c) => ({
     id: c.id,
@@ -426,11 +445,24 @@ async function loadRoom() {
   }));
 }
 
-function saveState() {
-  const file = getActiveFile();
-  if (file) file.content = textInput.value;
+async function loadRoom(options) {
+  const resetActiveFile = !options || options.resetActiveFile !== false;
+  const res = await fetch(`/api/rooms/${ROOM_ID}`, { credentials: 'include' });
+  if (res.status === 401) {
+    window.location.href = '/?next=' + encodeURIComponent(window.location.pathname);
+    return;
+  }
+  if (res.status === 403 || res.status === 404) {
+    await showAppAlert('Комната не найдена или нет доступа', { title: 'Нет доступа' });
+    window.location.href = '/home';
+    return;
+  }
+  const data = await res.json();
+  applyRoomData(data, { initialLoad: resetActiveFile });
+}
 
-  const payload = {
+function buildStatePayload() {
+  return {
     files: files.map((f) => ({
       id: f.id,
       name: f.name,
@@ -446,21 +478,113 @@ function saveState() {
       body: c.body,
     })),
   };
+}
 
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
+async function fallbackPutState(payload) {
+  const res = await fetch(`/api/rooms/${ROOM_ID}/state`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Client-Tab-Id': CLIENT_TAB_ID,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 401) window.location.href = '/?next=' + encodeURIComponent(window.location.pathname);
+}
+
+function pushStateToServer(payload) {
+  if (roomSocket && roomSocket.readyState === WebSocket.OPEN) {
     try {
-      const res = await fetch(`/api/rooms/${ROOM_ID}/state`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.status === 401) window.location.href = '/';
+      roomSocket.send(JSON.stringify({ type: 'state', tab_id: CLIENT_TAB_ID, payload }));
+      return;
     } catch (_) {
-      /* сеть */
+      /* fall through */
     }
-  }, 450);
+  }
+  fallbackPutState(payload).catch(() => {});
+}
+
+function handleWsMessage(ev) {
+  let msg;
+  try {
+    msg = JSON.parse(ev.data);
+  } catch (_) {
+    return;
+  }
+  if (msg.type === 'room_deleted' || msg.type === 'access_lost') {
+    if (roomPollTimer) clearInterval(roomPollTimer);
+    if (roomWsPingTimer) clearInterval(roomWsPingTimer);
+    window.location.href = '/home?kicked=1';
+    return;
+  }
+  if (msg.type === 'error') {
+    return;
+  }
+  if (msg.type !== 'state') return;
+  if (msg.sender_tab_id && msg.sender_tab_id === CLIENT_TAB_ID) return;
+  const seq = msg.seq || 0;
+  if (seq > 0 && seq <= lastRemoteSeq) return;
+  if (seq > lastRemoteSeq) lastRemoteSeq = seq;
+  if (!msg.room) return;
+  if (isCommentPopoverOpen()) commitCommentPopover();
+  applyRoomData(msg.room, { initialLoad: false });
+  renderTabs();
+  applyActiveFileContent();
+  refreshEditorDecorations();
+  updateAddCommentButtonState();
+}
+
+function scheduleWsReconnect() {
+  if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null;
+    connectRoomSocket();
+  }, 700);
+}
+
+function connectRoomSocket() {
+  if (roomSocket && (roomSocket.readyState === WebSocket.OPEN || roomSocket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${proto}://${location.host}/api/rooms/${ROOM_ID}/ws`;
+  try {
+    roomSocket = new WebSocket(url);
+  } catch (_) {
+    scheduleWsReconnect();
+    return;
+  }
+  roomSocket.addEventListener('open', () => {
+    wsOpen = true;
+  });
+  roomSocket.addEventListener('close', (ev) => {
+    wsOpen = false;
+    if (ev.code === 4403) {
+      if (roomPollTimer) clearInterval(roomPollTimer);
+      if (roomWsPingTimer) clearInterval(roomWsPingTimer);
+      window.location.href = '/home?kicked=1';
+      return;
+    }
+    if (ev.code === 4401) {
+      window.location.href = '/?next=' + encodeURIComponent(window.location.pathname);
+      return;
+    }
+    scheduleWsReconnect();
+  });
+  roomSocket.addEventListener('error', () => {
+    /* reconnect on close */
+  });
+  roomSocket.addEventListener('message', handleWsMessage);
+}
+
+function saveState() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const file = getActiveFile();
+    if (file) file.content = textInput.value;
+    pushStateToServer(buildStatePayload());
+  }, WS_SYNC_DEBOUNCE_MS);
 }
 
 function scheduleDescriptionSave() {
@@ -1082,7 +1206,7 @@ async function boot() {
           window.location.href = '/home';
         },
         onSaved: async () => {
-          await loadRoom();
+          await loadRoom({ resetActiveFile: false });
           renderTabs();
           applyActiveFileContent();
         },
@@ -1119,6 +1243,30 @@ async function boot() {
     });
   }
 
+  connectRoomSocket();
+
+  window.addEventListener('beforeunload', () => {
+    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+    if (roomWsPingTimer) clearInterval(roomWsPingTimer);
+    if (roomSocket && roomSocket.readyState === WebSocket.OPEN) {
+      try {
+        roomSocket.close();
+      } catch (_) {
+        /* */
+      }
+    }
+  });
+
+  roomWsPingTimer = setInterval(() => {
+    if (roomSocket && roomSocket.readyState === WebSocket.OPEN) {
+      try {
+        roomSocket.send(JSON.stringify({ type: 'ping' }));
+      } catch (_) {
+        /* */
+      }
+    }
+  }, 25000);
+
   roomPollTimer = setInterval(async () => {
     const res = await fetch(`/api/rooms/${ROOM_ID}`, { credentials: 'include' });
     if (res.status === 404 || res.status === 403) {
@@ -1133,7 +1281,7 @@ async function boot() {
       roomTitleEl.textContent = nt;
       document.title = `${nt} — Live coding`;
     }
-  }, 4000);
+  }, 20000);
 }
 
 boot();
