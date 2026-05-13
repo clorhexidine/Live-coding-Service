@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import DATABASE_URL, Base, engine
-from app.migrate import backfill_room_invite_codes, run_sqlite_migrations
+from app.migrate import run_migrations
 from app.routers import auth, rooms
 
 logger = logging.getLogger("uvicorn.error")
@@ -49,8 +49,7 @@ def startup():
     logger.info("Database driver: %s", scheme)
 
     Base.metadata.create_all(bind=engine)
-    run_sqlite_migrations()
-    backfill_room_invite_codes()
+    run_migrations()
 
 
 @app.get("/")
@@ -68,8 +67,8 @@ async def room_page(room_id: int):
     return FileResponse(STATIC_DIR / "room.html")
 
 
-@app.get("/join/{code}")
-async def join_page(code: str):
+@app.get("/join/{token}")
+async def join_invite_page(token: str):
     return FileResponse(STATIC_DIR / "join.html")
 
 

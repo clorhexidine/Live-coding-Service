@@ -14,27 +14,12 @@
       <button type="button" class="btn-logout" id="btn-logout">Выход</button>
     </header>
 
-    <div class="home-join-strip">
-      <div class="home-join-inner">
-        <label class="home-join-label" for="home-join-code">Код комнаты</label>
-        <div class="home-join-row">
-          <input type="text" id="home-join-code" class="home-join-input" maxlength="10" placeholder="Например, ABC12X" autocomplete="off" spellcheck="false">
-          <button type="button" class="btn-join-room" id="btn-join-code">Войти в комнату</button>
-        </div>
-        <p class="field-hint field-hint--error" id="home-join-hint" style="display:none"></p>
-      </div>
-    </div>
-
-    <div class="home-join-password-modal" id="home-join-pw-modal" style="display:none" aria-hidden="true">
-      <div class="home-join-password-dialog" role="dialog" aria-modal="true" aria-labelledby="home-join-pw-title">
-        <h2 class="modal-section-title" id="home-join-pw-title">Пароль комнаты</h2>
-        <p class="join-sub" id="home-join-pw-sub"></p>
-        <div class="pin6-wrap" id="home-join-pin-host"></div>
-        <p class="field-hint field-hint--error" id="home-join-pw-err" style="display:none"></p>
-        <div class="join-actions join-actions--footer">
-          <button type="button" class="btn-secondary-lg" id="home-join-pw-cancel">Отмена</button>
-          <button type="button" class="btn-primary-lg" id="home-join-pw-go">Войти</button>
-        </div>
+    <div class="join-by-code-panel">
+      <div class="join-by-code-inner">
+        <span class="join-by-code-label">Вход по коду</span>
+        <div id="home-join-code-pin" class="pin-row-host" aria-label="Код приглашения"></div>
+        <button type="button" class="btn-primary join-by-code-btn" id="btn-join-by-code">Войти в комнату</button>
+        <p class="field-hint" id="join-code-hint" style="display:none"></p>
       </div>
     </div>
 
@@ -45,26 +30,37 @@
     <ul class="room-list" id="room-list" style="display:none"></ul>
   </div>
 
-  <div class="app-modal-overlay" id="create-room-overlay" aria-hidden="true">
-    <div class="create-room-dialog" role="dialog" aria-modal="true" aria-labelledby="create-room-title">
-      <h2 id="create-room-title" class="modal-section-title">Новая комната</h2>
-      <p class="create-room-hint">Имя и пароль необязательны. Пароль — ровно 6 символов (латиница и цифры), с подтверждением.</p>
-      <div class="form-group">
-        <label for="create-room-name">Имя комнаты</label>
-        <input id="create-room-name" type="text" maxlength="255" placeholder="По умолчанию: «Комната N»" autocomplete="off">
+  <div id="create-room-overlay" class="room-settings-overlay" style="display:none">
+    <div class="room-settings-dialog room-settings-dialog--create" role="dialog" aria-modal="true" aria-labelledby="cr-title">
+      <h2 id="cr-title" class="room-settings-h2">Новая комната</h2>
+      <div class="form-group room-settings-field">
+        <label for="create-title">Название (необязательно)</label>
+        <input id="create-title" type="text" maxlength="255" placeholder="По умолчанию — как раньше" />
       </div>
-      <div class="form-group">
-        <span class="label-like">Пароль комнаты</span>
-        <div class="pin6-wrap" id="create-pin-a"></div>
+      <div class="room-settings-section">
+        <div class="room-settings-label">Пароль комнаты (необязательно, 6 символов)</div>
+        <span class="room-settings-hint">Оставьте пустым — вход без пароля</span>
+        <div id="create-pw-pin" class="pin-row-host"></div>
+        <span class="room-settings-hint">Подтверждение</span>
+        <div id="create-pw2-pin" class="pin-row-host"></div>
       </div>
-      <div class="form-group">
-        <span class="label-like">Подтверждение пароля</span>
-        <div class="pin6-wrap" id="create-pin-b"></div>
+      <p class="room-settings-error" id="create-err" style="display:none"></p>
+      <div class="room-settings-actions room-settings-actions--row">
+        <button type="button" class="app-modal-btn app-modal-btn--secondary" id="create-cancel">Отмена</button>
+        <button type="button" class="btn-primary" id="create-submit">Создать</button>
       </div>
-      <p class="field-hint field-hint--error" id="create-room-err" style="display:none"></p>
-      <div class="create-room-actions">
-        <button type="button" class="btn-secondary-lg" id="create-room-cancel">Отмена</button>
-        <button type="button" class="btn-primary-lg" id="create-room-submit">Создать</button>
+    </div>
+  </div>
+
+  <div id="home-join-pw-overlay" class="room-settings-overlay" style="display:none">
+    <div class="room-settings-dialog room-settings-dialog--narrow" role="dialog" aria-modal="true">
+      <h2 class="room-settings-h2">Пароль комнаты</h2>
+      <p class="room-settings-sub">Введите пароль из 6 символов.</p>
+      <div id="home-join-pw-pin" class="pin-row-host"></div>
+      <p class="room-settings-error" id="home-join-pw-err" style="display:none"></p>
+      <div class="room-settings-actions room-settings-actions--row">
+        <button type="button" class="app-modal-btn app-modal-btn--secondary" id="home-join-pw-cancel">Отмена</button>
+        <button type="button" class="btn-primary" id="home-join-pw-submit">Войти</button>
       </div>
     </div>
   </div>
@@ -72,389 +68,8 @@
   <script src="/static/auth.js"></script>
   <script src="/static/theme.js"></script>
   <script src="/static/modal.js"></script>
-  <script src="/static/pin-input.js"></script>
-  <script>
-    const roomList = document.getElementById('room-list');
-    const loading = document.getElementById('loading');
-    const homeJoinCode = document.getElementById('home-join-code');
-    const homeJoinHint = document.getElementById('home-join-hint');
-    const btnJoinCode = document.getElementById('btn-join-code');
-    const homeJoinPwModal = document.getElementById('home-join-pw-modal');
-    const homeJoinPinHost = document.getElementById('home-join-pin-host');
-    const homeJoinPwSub = document.getElementById('home-join-pw-sub');
-    const homeJoinPwErr = document.getElementById('home-join-pw-err');
-    const homeJoinPwCancel = document.getElementById('home-join-pw-cancel');
-    const homeJoinPwGo = document.getElementById('home-join-pw-go');
-
-    const createOverlay = document.getElementById('create-room-overlay');
-    const createName = document.getElementById('create-room-name');
-    const createErr = document.getElementById('create-room-err');
-    const createCancel = document.getElementById('create-room-cancel');
-    const createSubmit = document.getElementById('create-room-submit');
-    const createPinAHost = document.getElementById('create-pin-a');
-    const createPinBHost = document.getElementById('create-pin-b');
-
-    let homeJoinPin = null;
-    let createPinA = null;
-    let createPinB = null;
-    let pendingJoinLookup = null;
-
-    function normCode(v) {
-      return String(v || '').trim().toUpperCase().replace(/\s+/g, '').slice(0, 8);
-    }
-
-    function openCreateModal() {
-      createErr.style.display = 'none';
-      createErr.textContent = '';
-      createName.value = '';
-      if (!createPinA) createPinA = mountPin6(createPinAHost);
-      else createPinA.clear();
-      if (!createPinB) createPinB = mountPin6(createPinBHost);
-      else createPinB.clear();
-      createOverlay.classList.add('app-modal-overlay--open');
-      createOverlay.setAttribute('aria-hidden', 'false');
-      document.body.classList.add('app-modal-open');
-      requestAnimationFrame(() => createName.focus());
-    }
-
-    function closeCreateModal() {
-      createOverlay.classList.remove('app-modal-overlay--open');
-      createOverlay.setAttribute('aria-hidden', 'true');
-      document.body.classList.remove('app-modal-open');
-    }
-
-    function openHomeJoinPw(lookup) {
-      pendingJoinLookup = lookup;
-      homeJoinPwSub.textContent = lookup.title ? '«' + lookup.title + '»' : 'Комната #' + lookup.room_id;
-      homeJoinPwErr.style.display = 'none';
-      homeJoinPwErr.textContent = '';
-      if (!homeJoinPin) homeJoinPin = mountPin6(homeJoinPinHost);
-      else homeJoinPin.clear();
-      homeJoinPwModal.style.display = 'flex';
-      homeJoinPwModal.setAttribute('aria-hidden', 'false');
-      document.body.classList.add('app-modal-open');
-      requestAnimationFrame(() => homeJoinPin.focus());
-    }
-
-    function closeHomeJoinPw() {
-      pendingJoinLookup = null;
-      homeJoinPwModal.style.display = 'none';
-      homeJoinPwModal.setAttribute('aria-hidden', 'true');
-      document.body.classList.remove('app-modal-open');
-    }
-
-    async function requireAuth() {
-      const me = await getMe();
-      if (!me || !me.id) {
-        window.location.href = '/';
-        return null;
-      }
-      return me;
-    }
-
-    async function tryJoinByCode(codeNorm) {
-      const resLookup = await fetch('/api/rooms/lookup/' + encodeURIComponent(codeNorm), { credentials: 'include' });
-      if (resLookup.status === 404) {
-        homeJoinHint.style.display = '';
-        homeJoinHint.textContent = 'Комната с таким кодом не найдена';
-        return;
-      }
-      if (!resLookup.ok) {
-        homeJoinHint.style.display = '';
-        homeJoinHint.textContent = 'Не удалось проверить код';
-        return;
-      }
-      const lookup = await resLookup.json();
-      if (lookup.is_member) {
-        window.location.href = '/room/' + lookup.room_id;
-        return;
-      }
-      if (lookup.has_password) {
-        openHomeJoinPw(lookup);
-        return;
-      }
-      const resJoin = await fetch('/api/rooms/join', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: codeNorm, password: null }),
-      });
-      if (!resJoin.ok) {
-        const j = await resJoin.json().catch(() => ({}));
-        homeJoinHint.style.display = '';
-        homeJoinHint.textContent = typeof j.detail === 'string' ? j.detail : 'Не удалось войти';
-        return;
-      }
-      const room = await resJoin.json();
-      window.location.href = '/room/' + room.id;
-    }
-
-    btnJoinCode.addEventListener('click', async () => {
-      homeJoinHint.style.display = 'none';
-      const code = normCode(homeJoinCode.value);
-      if (!code) {
-        homeJoinHint.style.display = '';
-        homeJoinHint.textContent = 'Введите код комнаты';
-        homeJoinCode.focus();
-        return;
-      }
-      btnJoinCode.disabled = true;
-      try {
-        await tryJoinByCode(code);
-      } finally {
-        btnJoinCode.disabled = false;
-      }
-    });
-
-    homeJoinPwCancel.addEventListener('click', () => closeHomeJoinPw());
-
-    homeJoinPwGo.addEventListener('click', async () => {
-      if (!pendingJoinLookup) return;
-      const v = homeJoinPin ? homeJoinPin.getValue() : '';
-      if (v.length !== 6) {
-        homeJoinPwErr.style.display = '';
-        homeJoinPwErr.textContent = 'Введите все 6 символов';
-        return;
-      }
-      homeJoinPwErr.style.display = 'none';
-      homeJoinPwGo.disabled = true;
-      try {
-        const resJoin = await fetch('/api/rooms/join', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: normCode(homeJoinCode.value), password: v }),
-        });
-        if (!resJoin.ok) {
-          const j = await resJoin.json().catch(() => ({}));
-          homeJoinPwErr.style.display = '';
-          homeJoinPwErr.textContent = typeof j.detail === 'string' ? j.detail : 'Не удалось войти';
-          return;
-        }
-        const room = await resJoin.json();
-        closeHomeJoinPw();
-        window.location.href = '/room/' + room.id;
-      } finally {
-        homeJoinPwGo.disabled = false;
-      }
-    });
-
-    createCancel.addEventListener('click', () => closeCreateModal());
-
-    createSubmit.addEventListener('click', async () => {
-      createErr.style.display = 'none';
-      const titleRaw = createName.value.trim();
-      const pa = createPinA.getValue();
-      const pb = createPinB.getValue();
-      const hasAny = pa.length > 0 || pb.length > 0;
-      if (hasAny) {
-        if (pa.length !== 6 || pb.length !== 6) {
-          createErr.style.display = '';
-          createErr.textContent = 'Пароль должен состоять из 6 символов в обеих панелях';
-          return;
-        }
-        if (pa !== pb) {
-          createErr.style.display = '';
-          createErr.textContent = 'Пароли не совпадают';
-          return;
-        }
-      }
-      const body = {};
-      if (titleRaw) body.title = titleRaw;
-      if (hasAny) body.password = pa;
-      createSubmit.disabled = true;
-      try {
-        const res = await fetch('/api/rooms', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        if (res.status === 401) {
-          window.location.href = '/';
-          return;
-        }
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          createErr.style.display = '';
-          createErr.textContent = typeof j.detail === 'string' ? j.detail : 'Не удалось создать комнату';
-          return;
-        }
-        const room = await res.json();
-        closeCreateModal();
-        const invite = room.invite_code || '';
-        const link = room.invite_link || (window.location.origin + '/join/' + invite);
-        const msg =
-          'Код: ' +
-          invite +
-          '\n\nСсылка:\n' +
-          link +
-          '\n\nСкопируйте и отправьте приглашённым. Эти данные видны только вам.';
-        await showAppAlert(msg, { title: 'Комната создана', okText: 'Перейти в комнату' });
-        window.location.href = '/room/' + room.id;
-      } finally {
-        createSubmit.disabled = false;
-      }
-    });
-
-    async function loadRooms() {
-      const res = await fetch('/api/rooms', { credentials: 'include' });
-      if (res.status === 401) {
-        window.location.href = '/';
-        return;
-      }
-      if (!res.ok) {
-        loading.textContent = 'Не удалось загрузить комнаты';
-        return;
-      }
-      const me = await getMe();
-      const rooms = await res.json();
-      loading.style.display = 'none';
-      roomList.style.display = '';
-      roomList.innerHTML = '';
-      if (rooms.length === 0) {
-        loading.style.display = '';
-        loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
-        return;
-      }
-      rooms.forEach((r) => {
-        const isOwner = me && me.id === r.owner_id;
-        const li = document.createElement('li');
-        li.className = 'room-item';
-
-        const displayTitle = r.title || `Комната #${r.id}`;
-
-        const titleHost = document.createElement('div');
-        titleHost.className = 'room-title-host';
-
-        const leftBlock = document.createElement('div');
-        leftBlock.className = 'room-left-block';
-
-        const titleStack = document.createElement('div');
-        titleStack.className = 'room-title-stack';
-
-        const titleRow = document.createElement('div');
-        titleRow.className = 'room-title-row';
-
-        const titleCell = document.createElement('div');
-        titleCell.className = 'room-title-cell';
-
-        const titleLabel = document.createElement('span');
-        titleLabel.className = 'room-title-label';
-        titleLabel.textContent = displayTitle;
-        titleLabel.title = isOwner ? 'Откройте настройки (шестерёнка в комнате)' : '';
-
-        titleCell.appendChild(titleLabel);
-        titleRow.appendChild(titleCell);
-        titleStack.appendChild(titleRow);
-
-        if (r.description && r.description.trim()) {
-          const desc = document.createElement('div');
-          desc.className = 'room-list-desc';
-          let t = r.description.trim().split('\n')[0].slice(0, 160);
-          if (r.description.trim().length > 160) t += '…';
-          desc.textContent = t;
-          titleStack.appendChild(desc);
-        }
-
-        const colDivider = document.createElement('div');
-        colDivider.className = 'room-col-divider';
-        colDivider.setAttribute('aria-hidden', 'true');
-
-        const openLink = document.createElement('a');
-        openLink.className = 'room-open-link';
-        openLink.href = `/room/${r.id}`;
-        openLink.textContent = 'Открыть';
-
-        leftBlock.appendChild(titleStack);
-        leftBlock.appendChild(colDivider);
-        leftBlock.appendChild(openLink);
-        titleHost.appendChild(leftBlock);
-
-        const actions = document.createElement('div');
-        actions.className = 'room-actions';
-
-        if (isOwner) {
-          const btnGear = document.createElement('button');
-          btnGear.type = 'button';
-          btnGear.className = 'btn-room-action btn-room-gear';
-          btnGear.title = 'Настройки комнаты';
-          btnGear.setAttribute('aria-label', 'Настройки комнаты');
-          btnGear.innerHTML = '&#9881;';
-          btnGear.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            window.location.href = `/room/${r.id}?settings=1`;
-          });
-          actions.appendChild(btnGear);
-
-          const btnDelete = document.createElement('button');
-          btnDelete.type = 'button';
-          btnDelete.className = 'btn-room-action btn-room-action--danger';
-          btnDelete.textContent = 'Удалить';
-          btnDelete.addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const ok = await showAppConfirm({
-              title: 'Удалить комнату',
-              message: `Удалить комнату «${titleLabel.textContent}»?\n\nВсе файлы в ней будут удалены.`,
-              confirmText: 'Удалить',
-              cancelText: 'Отмена',
-              danger: true,
-            });
-            if (!ok) return;
-            const resDel = await fetch(`/api/rooms/${r.id}`, {
-              method: 'DELETE',
-              credentials: 'include',
-            });
-            if (resDel.status === 401) {
-              window.location.href = '/';
-              return;
-            }
-            if (!resDel.ok) {
-              await showAppAlert('Не удалось удалить комнату', { title: 'Ошибка' });
-              return;
-            }
-            li.remove();
-            if (roomList.children.length === 0) {
-              loading.style.display = '';
-              loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
-            }
-          });
-          actions.appendChild(btnDelete);
-        }
-
-        li.appendChild(titleHost);
-        li.appendChild(actions);
-        roomList.appendChild(li);
-      });
-    }
-
-    document.getElementById('btn-logout').addEventListener('click', async () => {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-      window.location.href = '/';
-    });
-
-    document.getElementById('btn-create').addEventListener('click', () => {
-      openCreateModal();
-    });
-
-    createOverlay.addEventListener('click', (e) => {
-      if (e.target === createOverlay) closeCreateModal();
-    });
-
-    (async () => {
-      await requireAuth();
-      if (sessionStorage.getItem('lc_room_kick') === '1') {
-        sessionStorage.removeItem('lc_room_kick');
-        const msg =
-          sessionStorage.getItem('lc_room_kick_msg') ||
-          'Комната была удалена или у вас больше нет доступа.';
-        sessionStorage.removeItem('lc_room_kick_msg');
-        await showAppAlert(msg, { title: 'Нет доступа', okText: 'Ок' });
-      }
-      await loadRooms();
-    })();
-  </script>
+  <script src="/static/pin-ui.js"></script>
+  <script src="/static/room-settings.js"></script>
+  <script src="/static/home.js"></script>
 </body>
 </html>

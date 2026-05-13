@@ -75,19 +75,20 @@
       clearAuthForms();
     });
 
-    async function ensureNotLoggedIn() {
-      const sp = new URLSearchParams(window.location.search);
-      const joinCode = sp.get('join');
-      const me = await getMe();
-      if (me && me.id) {
-        if (joinCode && joinCode.trim()) {
-          window.location.href = '/join/' + encodeURIComponent(joinCode.trim().toUpperCase());
-        } else {
-          window.location.href = '/home';
-        }
-        return;
+    function redirectIfLoggedIn() {
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get('next');
+      if (next && next.startsWith('/') && !next.startsWith('//')) {
+        window.location.href = next;
+      } else {
+        window.location.href = '/home';
       }
-      clearAuthForms();
+    }
+
+    async function ensureNotLoggedIn() {
+      const me = await getMe();
+      if (me && me.id) redirectIfLoggedIn();
+      else clearAuthForms();
     }
     ensureNotLoggedIn();
 
@@ -107,12 +108,7 @@
         errEl.textContent = j.detail || 'Ошибка входа';
         return;
       }
-      const sp = new URLSearchParams(window.location.search);
-      const joinAfter = sp.get('join');
-      const target = joinAfter && joinAfter.trim()
-        ? '/join/' + encodeURIComponent(joinAfter.trim().toUpperCase())
-        : '/home';
-      window.location.href = target;
+      redirectIfLoggedIn();
     });
 
     formRegister.addEventListener('submit', async (e) => {
@@ -131,12 +127,7 @@
         errEl.textContent = typeof j.detail === 'string' ? j.detail : (j.detail?.[0]?.msg || 'Ошибка регистрации');
         return;
       }
-      const sp = new URLSearchParams(window.location.search);
-      const joinAfter = sp.get('join');
-      const target = joinAfter && joinAfter.trim()
-        ? '/join/' + encodeURIComponent(joinAfter.trim().toUpperCase())
-        : '/home';
-      window.location.href = target;
+      redirectIfLoggedIn();
     });
   </script>
 </body>

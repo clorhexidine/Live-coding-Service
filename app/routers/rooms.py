@@ -1,22 +1,22 @@
-import os
-import secrets
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, func, insert, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import hash_password, verify_password
 from app.database import get_db
-from app.deps import get_current_user, get_current_user_optional
+from app.deps import get_current_user
+from app.invites import new_invite_code, new_invite_token
 from app.models import Room, RoomComment, RoomFile, User, user_rooms
 from app.schemas import (
     CommentOut,
+    JoinPreviewOut,
     RoomCreate,
-    RoomCreatedOut,
+    RoomFileOut,
     RoomJoinIn,
     RoomListItem,
-    RoomLookupOut,
     RoomMemberOut,
     RoomOut,
     RoomSettingsOut,
@@ -26,33 +26,6 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
-
-_INVITE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-
-
-def _public_base_url(request: Request) -> str:
-    env = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
-    if env:
-        return env
-    return str(request.base_url).rstrip("/")
-
-
-def _invite_link(request: Request, code: str) -> str:
-    return f"{_public_base_url(request)}/join/{code}"
-
-
-def _normalize_invite_code(code: str) -> str:
-    raw = (code or "").strip().upper().replace(" ", "")
-    return raw[:8]
-
-
-def _generate_unique_invite_code(db: Session) -> str:
-    for _ in range(120):
-        cand = "".join(secrets.choice(_INVITE_ALPHABET) for _ in range(6))
-        taken = db.execute(select(Room.id).where(Room.invite_code == cand)).first()
-        if not taken:
-            return cand
-    raise HTTPException(status_code=500, detail="Не удалось сгенерировать код приглашения")
 
 
 def _user_has_room_access(db: Session, user_id: int, room_id: int) -> bool:
@@ -74,15 +47,26 @@ def _get_room_or_403(db: Session, user: User, room_id: int) -> Room:
     return room
 
 
-def _user_room_titles(db: Session, user_id: int, exclude_room_id: int | None = None) -> set[str]:
-    q = (
+def _find_room_by_code(db: Session, code: str) -> Room | None:
+    c = (code or "").strip().upper()
+    if not c:
+        return None
+    return db.execute(select(Room).where(Room.invite_code == c)).scalar_one_or_none()
+
+
+def _find_room_by_token(db: Session, token: str) -> Room | None:
+    t = (token or "").strip()
+    if not t:
+        return None
+    return db.execute(select(Room).where(Room.invite_token == t)).scalar_one_or_none()
+
+
+def _user_room_titles(db: Session, user_id: int) -> set[str]:
+    rows = db.execute(
         select(Room.title)
         .join(user_rooms, Room.id == user_rooms.c.room_id)
         .where(user_rooms.c.user_id == user_id)
-    )
-    if exclude_room_id is not None:
-        q = q.where(Room.id != exclude_room_id)
-    rows = db.execute(q).all()
+    ).all()
     out = set()
     for row in rows:
         if row[0]:
@@ -90,8 +74,8 @@ def _user_room_titles(db: Session, user_id: int, exclude_room_id: int | None = N
     return out
 
 
-def _default_room_title(db: Session, user_id: int, exclude_room_id: int | None = None) -> str:
-    titles = _user_room_titles(db, user_id, exclude_room_id)
+def _default_room_title(db: Session, user_id: int) -> str:
+    titles = _user_room_titles(db, user_id)
     n = db.execute(
         select(func.count()).select_from(user_rooms).where(user_rooms.c.user_id == user_id)
     ).scalar_one()
@@ -103,7 +87,17 @@ def _default_room_title(db: Session, user_id: int, exclude_room_id: int | None =
     return cand
 
 
-def _room_to_out(db: Session, room: Room) -> RoomOut:
+def _unique_invite_code(db: Session) -> str:
+    used_rows = db.execute(select(Room.invite_code).where(Room.invite_code.isnot(None))).all()
+    used = {r[0] for r in used_rows if r[0]}
+    for _ in range(500):
+        c = new_invite_code()
+        if c not in used:
+            return c
+    return new_invite_code() + "X"
+
+
+def _room_to_out(db: Session, room: Room, viewer: User | None = None) -> RoomOut:
     files = (
         db.execute(
             select(RoomFile).where(RoomFile.room_id == room.id).order_by(RoomFile.sort_order, RoomFile.id)
@@ -116,6 +110,8 @@ def _room_to_out(db: Session, room: Room) -> RoomOut:
         .scalars()
         .all()
     )
+    is_owner = viewer is not None and viewer.id == room.owner_id
+    has_pw = bool(room.room_password_hash)
     return RoomOut(
         id=room.id,
         title=room.title,
@@ -137,87 +133,160 @@ def _room_to_out(db: Session, room: Room) -> RoomOut:
             )
             for c in comments
         ],
+        is_owner=is_owner,
+        has_room_password=has_pw,
     )
+
+
+@router.get("/join-preview", response_model=JoinPreviewOut)
+def join_preview_by_code(
+    code: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    room = _find_room_by_code(db, code)
+    if not room:
+        raise HTTPException(status_code=404, detail="Комната не найдена")
+    return JoinPreviewOut(
+        room_id=room.id,
+        title=room.title,
+        has_room_password=bool(room.room_password_hash),
+        already_member=_user_has_room_access(db, user.id, room.id),
+    )
+
+
+@router.get("/join-preview-token/{token}", response_model=JoinPreviewOut)
+def join_preview_by_token(
+    token: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    room = _find_room_by_token(db, token)
+    if not room:
+        raise HTTPException(status_code=404, detail="Комната не найдена")
+    return JoinPreviewOut(
+        room_id=room.id,
+        title=room.title,
+        has_room_password=bool(room.room_password_hash),
+        already_member=_user_has_room_access(db, user.id, room.id),
+    )
+
+
+@router.post("/join", response_model=dict)
+def join_room(
+    body: RoomJoinIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    code = (body.code or "").strip().upper() or None
+    token = (body.invite_token or "").strip() or None
+    if bool(code) == bool(token):
+        raise HTTPException(status_code=400, detail="Укажите код или пригласительный токен")
+    room = _find_room_by_code(db, code) if code else _find_room_by_token(db, token or "")
+    if not room:
+        raise HTTPException(status_code=404, detail="Комната не найдена")
+    if _user_has_room_access(db, user.id, room.id):
+        return {"ok": True, "room_id": room.id, "already_member": True}
+    if room.room_password_hash:
+        pw = (body.password or "").strip()
+        if not verify_password(pw, room.room_password_hash):
+            raise HTTPException(status_code=401, detail="Неверный пароль комнаты")
+    try:
+        db.execute(insert(user_rooms).values(user_id=user.id, room_id=room.id))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return {"ok": True, "room_id": room.id, "already_member": True}
+    return {"ok": True, "room_id": room.id, "already_member": False}
 
 
 def _require_room_owner(room: Room, user: User) -> None:
     if room.owner_id != user.id:
-        raise HTTPException(status_code=403, detail="Только владелец может выполнить это действие")
+        raise HTTPException(status_code=403, detail="Только владелец может изменять или удалять комнату")
 
 
-def _room_list_item(room: Room) -> RoomListItem:
-    return RoomListItem(
-        id=room.id,
-        title=room.title,
-        description=room.description,
-        owner_id=room.owner_id,
-    )
-
-
-def _members_sorted(db: Session, room: Room) -> list[User]:
-    rows = (
-        db.execute(
-            select(User)
-            .join(user_rooms, User.id == user_rooms.c.user_id)
-            .where(user_rooms.c.room_id == room.id)
-        )
-        .scalars()
-        .all()
-    )
-    owner = db.get(User, room.owner_id)
-    others = [u for u in rows if u.id != room.owner_id]
-    others.sort(key=lambda u: (u.username or "").lower())
-    out: list[User] = []
-    if owner:
-        out.append(owner)
-    out.extend(others)
+def _members_for_settings(db: Session, room: Room) -> list[RoomMemberOut]:
+    users = db.scalars(
+        select(User)
+        .join(user_rooms, User.id == user_rooms.c.user_id)
+        .where(user_rooms.c.room_id == room.id)
+    ).all()
+    owner_u = next((u for u in users if u.id == room.owner_id), None)
+    if not owner_u:
+        return []
+    others = sorted((u for u in users if u.id != room.owner_id), key=lambda u: u.username.lower())
+    out = [RoomMemberOut(id=owner_u.id, username=owner_u.username, is_owner=True)]
+    out.extend(RoomMemberOut(id=u.id, username=u.username, is_owner=False) for u in others)
     return out
 
 
-@router.get("/lookup/{code}", response_model=RoomLookupOut)
-def lookup_room(
-    code: str,
-    request: Request,
-    db: Session = Depends(get_db),
-    user: User | None = Depends(get_current_user_optional),
-):
-    norm = _normalize_invite_code(code)
-    room = db.execute(select(Room).where(Room.invite_code == norm)).scalar_one_or_none()
-    if not room:
-        raise HTTPException(status_code=404, detail="Комната не найдена")
-    is_member = bool(user and _user_has_room_access(db, user.id, room.id))
-    return RoomLookupOut(
-        room_id=room.id,
-        title=room.title,
-        has_password=bool(room.password_hash),
-        is_member=is_member,
-    )
-
-
-@router.post("/join", response_model=RoomListItem)
-def join_room(
-    body: RoomJoinIn,
-    request: Request,
+@router.get("/{room_id}/settings", response_model=RoomSettingsOut)
+def get_room_settings(
+    room_id: int,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    norm = _normalize_invite_code(body.code)
-    room = db.execute(select(Room).where(Room.invite_code == norm)).scalar_one_or_none()
-    if not room:
-        raise HTTPException(status_code=404, detail="Комната не найдена")
+    room = _get_room_or_403(db, user, room_id)
+    _require_room_owner(room, user)
+    if not room.invite_token:
+        room.invite_token = new_invite_token()
+        room.invite_code = _unique_invite_code(db)
+        db.commit()
+        db.refresh(room)
+    invite_path = f"/join/{room.invite_token}"
+    return RoomSettingsOut(
+        title=room.title,
+        invite_path=invite_path,
+        invite_code=room.invite_code or "",
+        has_room_password=bool(room.room_password_hash),
+        members=_members_for_settings(db, room),
+    )
 
-    if _user_has_room_access(db, user.id, room.id):
-        return _room_list_item(room)
 
-    if room.password_hash:
-        pwd = (body.password or "").strip()
-        if len(pwd) != 6 or not verify_password(pwd, room.password_hash):
-            raise HTTPException(status_code=401, detail="Неверный пароль комнаты")
+@router.patch("/{room_id}/settings", response_model=RoomSettingsOut)
+def patch_room_settings(
+    room_id: int,
+    data: RoomSettingsPatch,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    room = _get_room_or_403(db, user, room_id)
+    _require_room_owner(room, user)
+    if data.title is not None:
+        room.title = data.title.strip()
+    oldp = (data.old_room_password or "").strip()
+    np = (data.new_room_password or "").strip()
+    nc = (data.new_room_password_confirm or "").strip()
 
-    db.execute(insert(user_rooms).values(user_id=user.id, room_id=room.id))
+    if data.clear_room_password:
+        if room.room_password_hash:
+            if not verify_password(oldp, room.room_password_hash):
+                raise HTTPException(status_code=401, detail="Неверный текущий пароль комнаты")
+            room.room_password_hash = None
+    elif np or nc:
+        if len(np) != 6 or np != nc:
+            raise HTTPException(
+                status_code=400,
+                detail="Новый пароль — ровно 6 символов и должен совпадать с подтверждением",
+            )
+        if room.room_password_hash and not verify_password(oldp, room.room_password_hash):
+            raise HTTPException(status_code=401, detail="Неверный текущий пароль комнаты")
+        room.room_password_hash = hash_password(np)
+
     db.commit()
     db.refresh(room)
-    return _room_list_item(room)
+    if not room.invite_token:
+        room.invite_token = new_invite_token()
+        room.invite_code = _unique_invite_code(db)
+        db.commit()
+        db.refresh(room)
+    return RoomSettingsOut(
+        title=room.title,
+        invite_path=f"/join/{room.invite_token}",
+        invite_code=room.invite_code or "",
+        has_room_password=bool(room.room_password_hash),
+        members=_members_for_settings(db, room),
+    )
 
 
 @router.get("", response_model=list[RoomListItem])
@@ -229,34 +298,36 @@ def list_rooms(user: User = Depends(get_current_user), db: Session = Depends(get
         .order_by(func.lower(func.coalesce(Room.title, "")).asc(), Room.id.asc())
     )
     rooms = db.scalars(q).all()
-    return [_room_list_item(r) for r in rooms]
+    return rooms
 
 
-@router.post("", response_model=RoomCreatedOut)
+@router.post("", response_model=RoomListItem)
 def create_room(
     data: RoomCreate,
-    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    pw = (data.password or "").strip() if data.password else ""
+    pc = (data.password_confirm or "").strip() if data.password_confirm else ""
+    if pw or pc:
+        if len(pw) != 6 or pw != pc:
+            raise HTTPException(
+                status_code=400,
+                detail="Пароль комнаты — ровно 6 символов и должен совпадать с подтверждением",
+            )
     if data.title and data.title.strip():
         title = data.title.strip()
     else:
         title = _default_room_title(db, user.id)
     desc = data.description.strip() if data.description and data.description.strip() else None
-
-    pwd_hash = None
-    if data.password and len(data.password.strip()) == 6:
-        pwd_hash = hash_password(data.password.strip())
-
-    invite = _generate_unique_invite_code(db)
     room = Room(
         title=title,
         description=desc,
         owner_id=user.id,
         next_file_index=2,
-        invite_code=invite,
-        password_hash=pwd_hash,
+        invite_token=new_invite_token(),
+        invite_code=_unique_invite_code(db),
+        room_password_hash=hash_password(pw) if pw else None,
     )
     db.add(room)
     db.flush()
@@ -269,40 +340,7 @@ def create_room(
     db.add(f)
     db.commit()
     db.refresh(room)
-    return RoomCreatedOut(
-        id=room.id,
-        title=room.title,
-        description=room.description,
-        owner_id=room.owner_id,
-        invite_code=room.invite_code or invite,
-        invite_link=_invite_link(request, room.invite_code or invite),
-    )
-
-
-@router.get("/{room_id}/settings", response_model=RoomSettingsOut)
-def get_room_settings(
-    room_id: int,
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    room = _get_room_or_403(db, user, room_id)
-    _require_room_owner(room, user)
-    code = room.invite_code or ""
-    if not code:
-        code = _generate_unique_invite_code(db)
-        room.invite_code = code
-        db.commit()
-        db.refresh(room)
-    members = _members_sorted(db, room)
-    return RoomSettingsOut(
-        title=room.title,
-        description=room.description,
-        invite_code=code,
-        invite_link=_invite_link(request, code),
-        has_password=bool(room.password_hash),
-        members=[RoomMemberOut(id=u.id, username=u.username) for u in members],
-    )
+    return room
 
 
 @router.get("/{room_id}", response_model=RoomOut)
@@ -312,95 +350,7 @@ def get_room(
     db: Session = Depends(get_db),
 ):
     room = _get_room_or_403(db, user, room_id)
-    return _room_to_out(db, room)
-
-
-@router.patch("/{room_id}/settings", response_model=RoomSettingsOut)
-def patch_room_settings(
-    room_id: int,
-    data: RoomSettingsPatch,
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    room = _get_room_or_403(db, user, room_id)
-    _require_room_owner(room, user)
-
-    if data.title is not None:
-        t = data.title.strip()
-        if not t:
-            room.title = _default_room_title(db, user.id, exclude_room_id=room.id)
-        else:
-            room.title = t
-
-    if data.clear_password:
-        if room.password_hash:
-            old = (data.old_password or "").strip()
-            if len(old) != 6 or not verify_password(old, room.password_hash):
-                raise HTTPException(status_code=400, detail="Неверный текущий пароль комнаты")
-        room.password_hash = None
-    elif data.new_password:
-        if room.password_hash:
-            old = (data.old_password or "").strip()
-            if len(old) != 6 or not verify_password(old, room.password_hash):
-                raise HTTPException(status_code=400, detail="Неверный текущий пароль комнаты")
-        room.password_hash = hash_password(data.new_password.strip())
-
-    db.commit()
-    db.refresh(room)
-    return get_room_settings(room_id, request, user, db)
-
-
-@router.post("/{room_id}/leave")
-def leave_room(
-    room_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    room = db.get(Room, room_id)
-    if not room:
-        raise HTTPException(status_code=404, detail="Комната не найдена")
-    if room.owner_id == user.id:
-        raise HTTPException(status_code=400, detail="Владелец не может покинуть комнату — удалите её")
-    if not _user_has_room_access(db, user.id, room_id):
-        raise HTTPException(status_code=403, detail="Нет доступа к комнате")
-    db.execute(
-        delete(user_rooms).where(
-            user_rooms.c.user_id == user.id,
-            user_rooms.c.room_id == room_id,
-        )
-    )
-    db.commit()
-    return {"ok": True}
-
-
-@router.delete("/{room_id}/members/{member_id}")
-def kick_member(
-    room_id: int,
-    member_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    room = _get_room_or_403(db, user, room_id)
-    _require_room_owner(room, user)
-    if member_id == room.owner_id:
-        raise HTTPException(status_code=400, detail="Нельзя исключить владельца")
-    row = db.execute(
-        select(user_rooms.c.user_id).where(
-            user_rooms.c.room_id == room_id,
-            user_rooms.c.user_id == member_id,
-        )
-    ).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Участник не найден в комнате")
-    db.execute(
-        delete(user_rooms).where(
-            user_rooms.c.room_id == room_id,
-            user_rooms.c.user_id == member_id,
-        )
-    )
-    db.commit()
-    return {"ok": True}
+    return _room_to_out(db, room, user)
 
 
 @router.put("/{room_id}/state", response_model=RoomOut)
@@ -462,7 +412,7 @@ def save_room_state(
 
     db.commit()
     db.refresh(room)
-    return _room_to_out(db, room)
+    return _room_to_out(db, room, user)
 
 
 @router.patch("/{room_id}", response_model=RoomListItem)
@@ -480,7 +430,7 @@ def update_room(
         room.description = data.description
     db.commit()
     db.refresh(room)
-    return _room_list_item(room)
+    return room
 
 
 @router.delete("/{room_id}")
@@ -492,5 +442,51 @@ def delete_room(
     room = _get_room_or_403(db, user, room_id)
     _require_room_owner(room, user)
     db.delete(room)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{room_id}/leave")
+def leave_room(
+    room_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Комната не найдена")
+    if room.owner_id == user.id:
+        raise HTTPException(
+            status_code=400,
+            detail="Владелец не может покинуть комнату так — удалите комнату или оставайтесь в списке.",
+        )
+    if not _user_has_room_access(db, user.id, room_id):
+        raise HTTPException(status_code=403, detail="Нет доступа к комнате")
+    db.execute(delete(user_rooms).where(user_rooms.c.user_id == user.id, user_rooms.c.room_id == room_id))
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{room_id}/members/{member_user_id}")
+def remove_room_member(
+    room_id: int,
+    member_user_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    room = _get_room_or_403(db, user, room_id)
+    _require_room_owner(room, user)
+    if member_user_id == room.owner_id:
+        raise HTTPException(status_code=400, detail="Нельзя удалить владельца")
+    if member_user_id == user.id:
+        raise HTTPException(status_code=400, detail="Используйте «Покинуть комнату»")
+    res = db.execute(
+        delete(user_rooms).where(
+            user_rooms.c.user_id == member_user_id,
+            user_rooms.c.room_id == room_id,
+        )
+    )
+    if res.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Участник не найден в комнате")
     db.commit()
     return {"ok": True}
