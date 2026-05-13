@@ -288,14 +288,52 @@ body {
 
 .room-item-end {
   flex-shrink: 0;
-  border-left: 1px solid var(--card-border);
+  align-self: stretch;
   display: flex;
-  align-items: center;
-  padding: 0 6px 0 0;
+  flex-direction: column;
+  border-left: 1px solid var(--card-border);
+  padding: 0;
+  min-width: 118px;
+  max-width: 42%;
 }
 
-.room-item-end .btn-room-action {
-  border-left: none;
+.room-item-end .btn-room-side {
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: normal;
+  word-break: break-word;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.room-item-end .btn-room-side:hover {
+  background: var(--btn-hover);
+  color: var(--page-text);
+}
+
+.room-item-end .btn-room-side--danger {
+  color: var(--error);
+}
+
+.room-item-end .btn-room-side--danger:hover {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 10%, transparent);
 }
 
 .room-title-host {
@@ -922,6 +960,7 @@ body.app-modal-open {
   font-size: 1.1rem;
   font-weight: 600;
   letter-spacing: 0.02em;
+  text-transform: uppercase;
   border-radius: 10px;
   border: 1px solid var(--input-border);
   background: var(--input-bg);

@@ -1094,7 +1094,7 @@ async function boot() {
     btnRoomLeave.addEventListener('click', async () => {
       const ok = await showAppConfirm({
         title: 'Покинуть комнату',
-        message: 'Вы выйдете из комнаты и потеряете к ней доступ, пока вас снова не пригласят.',
+        message: `Выйти из комнаты «${roomTitleEl.textContent.trim()}»? Вы потеряете к ней доступ, пока вас снова не пригласят.`,
         confirmText: 'Выйти',
         cancelText: 'Отмена',
         danger: true,

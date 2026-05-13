@@ -1,4 +1,14 @@
 (function () {
+  /** Только латиница A–Z и цифры (как код приглашения). */
+  function sanitizePinString(raw) {
+    return String(raw || '')
+      .toUpperCase()
+      .split('')
+      .filter((ch) => (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9'))
+      .join('')
+      .slice(0, 6);
+  }
+
   /**
    * Шесть ячеек; вставка из буфера заполняет все позиции (как одна строка).
    * @param {HTMLElement} mount
@@ -25,10 +35,7 @@
     }
 
     function applyPastedText(raw) {
-      const text = String(raw || '')
-        .replace(/\s/g, '')
-        .replace(/[\u200b-\u200d\ufeff]/g, '')
-        .slice(0, 6);
+      const text = sanitizePinString(raw);
       for (let k = 0; k < 6; k++) inputs[k].value = text[k] || '';
       const last = Math.min(Math.max(text.length - 1, 0), 5);
       inputs[last].focus();
@@ -50,7 +57,7 @@
     }
 
     function setAll(s) {
-      const t = String(s || '').slice(0, 6);
+      const t = sanitizePinString(s);
       for (let i = 0; i < 6; i++) inputs[i].value = t[i] || '';
     }
 
@@ -75,11 +82,16 @@
         } else if (e.key === 'ArrowRight' && idx < 5) {
           e.preventDefault();
           inputs[idx + 1].focus();
+        } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          const u = e.key.toUpperCase();
+          const ok = (u >= 'A' && u <= 'Z') || (u >= '0' && u <= '9');
+          if (!ok) e.preventDefault();
         }
       });
 
       inp.addEventListener('input', () => {
-        let v = inp.value.replace(/\s/g, '');
+        const cleaned = sanitizePinString(inp.value);
+        let v = cleaned;
         if (v.length > 1) {
           let rest = v.slice(1);
           inp.value = v[0] || '';

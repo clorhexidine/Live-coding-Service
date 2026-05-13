@@ -131,6 +131,37 @@ async function onJoinByCodeClick() {
   await tryJoinAfterPreview(preview, code);
 }
 
+async function confirmAndLeaveRoom(roomId, displayTitle, li) {
+  const ok = await showAppConfirm({
+    title: 'Покинуть комнату',
+    message: `Выйти из комнаты «${displayTitle}»? Вы потеряете к ней доступ, пока вас снова не пригласят.`,
+    confirmText: 'Выйти',
+    cancelText: 'Отмена',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    const res = await fetch(`/api/rooms/${roomId}/leave`, { method: 'POST', credentials: 'include' });
+    if (res.status === 401) {
+      window.location.href = '/';
+      return;
+    }
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      await showAppAlert(typeof j.detail === 'string' ? j.detail : 'Не удалось выйти', { title: 'Ошибка' });
+      return;
+    }
+  } catch (_) {
+    await showAppAlert('Не удалось выйти из комнаты', { title: 'Ошибка' });
+    return;
+  }
+  li.remove();
+  if (roomList.children.length === 0) {
+    loading.style.display = '';
+    loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
+  }
+}
+
 async function loadRooms() {
   const res = await fetch('/api/rooms', { credentials: 'include' });
   if (res.status === 401) {
@@ -223,7 +254,7 @@ async function loadRooms() {
     if (isOwner) {
       const btnDelete = document.createElement('button');
       btnDelete.type = 'button';
-      btnDelete.className = 'btn-room-action btn-room-action--danger';
+      btnDelete.className = 'btn-room-side btn-room-side--danger';
       btnDelete.textContent = 'Удалить';
       btnDelete.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -255,13 +286,24 @@ async function loadRooms() {
         }
       });
       end.appendChild(btnDelete);
+    } else {
+      const btnLeave = document.createElement('button');
+      btnLeave.type = 'button';
+      btnLeave.className = 'btn-room-side';
+      btnLeave.textContent = 'Выйти из комнаты';
+      btnLeave.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await confirmAndLeaveRoom(r.id, displayTitle, li);
+      });
+      end.appendChild(btnLeave);
     }
 
     li.appendChild(main);
     if (isOwner) {
       li.appendChild(spine);
-      li.appendChild(end);
     }
+    li.appendChild(end);
 
     li.addEventListener('click', (e) => {
       if (e.target.closest('button')) return;
