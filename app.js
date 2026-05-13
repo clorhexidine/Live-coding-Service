@@ -139,7 +139,14 @@ function updateLineNumbers(text) {
 }
 
 function syncScroll() {
-  lineNumbers.scrollTop = textInput.scrollTop;
+  if (lineNumbers.scrollTop !== textInput.scrollTop) {
+    lineNumbers.scrollTop = textInput.scrollTop;
+  }
+}
+
+function syncScrollFromLineNumbers() {
+  const st = lineNumbers.scrollTop;
+  if (textInput.scrollTop !== st) textInput.scrollTop = st;
 }
 
 // ----- Рендер вкладок и содержимого -----
@@ -181,12 +188,7 @@ function renderTabs({ renameFileId = null } = {}) {
 }
 
 function applyTabsLayout() {
-  tabsContainer.classList.remove('tabs--compressed');
-  // Нормальный режим: вкладки естественной ширины.
-  // Если суммарная ширина не помещается, включаем режим сжатия.
-  if (tabsContainer.scrollWidth > tabsContainer.clientWidth + 1) {
-    tabsContainer.classList.add('tabs--compressed');
-  }
+  /* Горизонтальный скролл вкладок без сжатия — см. .tabs в styles.css */
 }
 
 function applyActiveFileContent() {
@@ -381,6 +383,22 @@ textInput.addEventListener('input', () => {
 });
 
 textInput.addEventListener('scroll', syncScroll);
+
+lineNumbers.addEventListener('scroll', syncScrollFromLineNumbers);
+
+const tabsBar = tabsContainer.parentElement;
+if (tabsBar) {
+  tabsBar.addEventListener(
+    'wheel',
+    (e) => {
+      if (tabsContainer.scrollWidth <= tabsContainer.clientWidth + 1) return;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      tabsContainer.scrollLeft += e.deltaY;
+    },
+    { passive: false }
+  );
+}
 
 textInput.addEventListener('paste', () => {
   setTimeout(() => {

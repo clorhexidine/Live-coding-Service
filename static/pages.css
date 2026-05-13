@@ -455,7 +455,12 @@ body {
   flex-shrink: 0;
   width: 10px;
   padding: 12px 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-thumb) var(--sb-track);
   font-size: 14px;
   line-height: 1.6;
   background: var(--comment-gutter-bg);
@@ -492,6 +497,7 @@ body {
   font-family: inherit;
   border: none;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
   white-space: pre-wrap;
@@ -681,6 +687,14 @@ body {
   background: var(--card-border);
   align-self: stretch;
   margin: 0 4px;
+}
+
+.app-root.app-root--room {
+  min-width: 0;
+}
+
+.app-root--room .editor-wrap {
+  min-height: 0;
 }
 
 .comment-ctx-menu {

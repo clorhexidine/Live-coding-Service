@@ -619,10 +619,18 @@ function refreshEditorDecorations() {
 function syncScrollAll() {
   const st = textInput.scrollTop;
   const sl = textInput.scrollLeft;
-  lineNumbers.scrollTop = st;
-  commentGutter.scrollTop = st;
-  highlightPre.scrollTop = st;
-  highlightPre.scrollLeft = sl;
+  if (lineNumbers.scrollTop !== st) lineNumbers.scrollTop = st;
+  if (commentGutter.scrollTop !== st) commentGutter.scrollTop = st;
+  if (highlightPre.scrollTop !== st) highlightPre.scrollTop = st;
+  if (highlightPre.scrollLeft !== sl) highlightPre.scrollLeft = sl;
+}
+
+function syncScrollFromGutter(source) {
+  const st = source.scrollTop;
+  if (textInput.scrollTop !== st) textInput.scrollTop = st;
+  if (source !== lineNumbers && lineNumbers.scrollTop !== st) lineNumbers.scrollTop = st;
+  if (source !== commentGutter && commentGutter.scrollTop !== st) commentGutter.scrollTop = st;
+  if (highlightPre.scrollTop !== st) highlightPre.scrollTop = st;
 }
 
 function hideCodeTooltip() {
@@ -702,10 +710,7 @@ function renderTabs({ renameFileId = null } = {}) {
 }
 
 function applyTabsLayout() {
-  tabsContainer.classList.remove('tabs--compressed');
-  if (tabsContainer.scrollWidth > tabsContainer.clientWidth + 1) {
-    tabsContainer.classList.add('tabs--compressed');
-  }
+  /* Вкладки не сжимаем: лишнее уходит в горизонтальный скролл (.tabs overflow-x: auto). */
 }
 
 function applyActiveFileContent() {
@@ -950,6 +955,23 @@ textInput.addEventListener('input', () => {
 });
 
 textInput.addEventListener('scroll', syncScrollAll);
+
+lineNumbers.addEventListener('scroll', () => syncScrollFromGutter(lineNumbers));
+commentGutter.addEventListener('scroll', () => syncScrollFromGutter(commentGutter));
+
+const tabsBar = tabsContainer.parentElement;
+if (tabsBar) {
+  tabsBar.addEventListener(
+    'wheel',
+    (e) => {
+      if (tabsContainer.scrollWidth <= tabsContainer.clientWidth + 1) return;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      tabsContainer.scrollLeft += e.deltaY;
+    },
+    { passive: false }
+  );
+}
 
 textInput.addEventListener('paste', () => {
   setTimeout(() => {
