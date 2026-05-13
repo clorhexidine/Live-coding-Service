@@ -18,8 +18,6 @@ html, body {
   flex-direction: column;
   height: 100vh;
   width: 100vw;
-  max-width: 100vw;
-  min-width: 0;
 }
 
 .tabs-bar {
@@ -28,42 +26,41 @@ html, body {
   background: #2d2d2d;
   border-bottom: 1px solid #1e1e1e;
   position: relative;
-  flex-shrink: 0;
-  min-width: 0;
 }
 
 .tabs {
   display: flex;
   align-items: stretch;
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: none;
   overflow-x: auto;
   overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
   overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  scrollbar-color: #787878 #505050;
+  touch-action: pan-x;
+  cursor: grab;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .tabs::-webkit-scrollbar {
-  height: 10px;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
-.tabs::-webkit-scrollbar-track {
-  background: #505050;
-}
-
-.tabs::-webkit-scrollbar-thumb {
-  background: #787878;
-  border: 2px solid #505050;
-  border-radius: 4px;
+.tabs.tabs--dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .tab {
   position: relative;
   flex: 0 0 auto;
   min-width: 160px;
-  padding: 6px 16px 6px 12px;
+  max-width: none;
+  padding: 6px 20px 6px 14px;
   border: none;
   border-right: 1px solid #1e1e1e;
   background: #2d2d2d;
@@ -73,20 +70,36 @@ html, body {
   align-items: center;
   justify-content: flex-start;
   white-space: nowrap;
+  text-overflow: clip;
   overflow: visible;
   cursor: pointer;
+}
+
+.tab-label {
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+  padding-right: 4px;
 }
 
 .tab--active {
   background: #3c3c3c;
   color: #fff;
 }
-
-.tab-label {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 22px;
+  height: 100%;
   pointer-events: none;
-  white-space: nowrap;
-  overflow: visible;
-  padding-right: 4px;
+  background: linear-gradient(
+    to right,
+    rgba(45, 45, 45, 0),
+    rgba(45, 45, 45, 0.9)
+  );
 }
 
 .tab-rename-input {
@@ -160,12 +173,9 @@ html, body {
   display: flex;
   align-items: stretch;
   flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
   width: 100%;
   background: #3c3c3c;
   color: #fff;
-  overflow: hidden;
 }
 
 /* Колонка с номерами строк */
@@ -175,16 +185,21 @@ html, body {
   padding: 12px 8px 12px 12px;
   overflow-x: hidden;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: #787878 #505050;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   font-size: 14px;
   line-height: 1.6;
   text-align: right;
   color: #858585;
   user-select: none;
   background: #3c3c3c;
+  touch-action: none;
+}
+
+.line-numbers::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .line-numbers .line-num {
@@ -192,7 +207,7 @@ html, body {
   min-height: 1.6em;
 }
 
-/* Поле ввода на весь экран */
+/* Поле ввода: вертикальная прокрутка справа */
 .text-column {
   flex: 1;
   min-width: 0;
@@ -200,7 +215,6 @@ html, body {
   padding: 12px 12px 12px 8px;
   font-size: 14px;
   line-height: 1.6;
-  /* Визуальная ширина Tab как у 4 пробелов (по умолчанию в браузере ~8) */
   -moz-tab-size: 4;
   tab-size: 4;
   font-family: inherit;
@@ -208,10 +222,11 @@ html, body {
   resize: none;
   background: #3c3c3c;
   color: #fff;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pan-y;
+  overflow-y: auto;
+  overflow-x: hidden;
   outline: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: manipulation;
 }
 
 .text-column::placeholder {

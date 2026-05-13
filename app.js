@@ -139,14 +139,7 @@ function updateLineNumbers(text) {
 }
 
 function syncScroll() {
-  if (lineNumbers.scrollTop !== textInput.scrollTop) {
-    lineNumbers.scrollTop = textInput.scrollTop;
-  }
-}
-
-function syncScrollFromLineNumbers() {
-  const st = lineNumbers.scrollTop;
-  if (textInput.scrollTop !== st) textInput.scrollTop = st;
+  lineNumbers.scrollTop = textInput.scrollTop;
 }
 
 // ----- Рендер вкладок и содержимого -----
@@ -184,11 +177,6 @@ function renderTabs({ renameFileId = null } = {}) {
   });
 
   updateAddButtonState();
-  applyTabsLayout();
-}
-
-function applyTabsLayout() {
-  /* Горизонтальный скролл вкладок без сжатия — см. .tabs в styles.css */
 }
 
 function applyActiveFileContent() {
@@ -245,6 +233,56 @@ tabsContainer.addEventListener('dblclick', (e) => {
   const index = files.indexOf(file);
   startRenameOnTab(tab, file, index + 1);
 });
+
+let tabStripDrag = null;
+let tabStripSuppressClick = false;
+
+tabsContainer.addEventListener(
+  'wheel',
+  (e) => {
+    const el = tabsContainer;
+    if (el.scrollWidth <= el.clientWidth + 1) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY + e.deltaX;
+  },
+  { passive: false }
+);
+
+tabsContainer.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  if (e.target.closest('.tab-rename-input')) return;
+  tabStripDrag = {
+    startX: e.clientX,
+    startScroll: tabsContainer.scrollLeft,
+    moved: false,
+  };
+  tabsContainer.classList.add('tabs--dragging');
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!tabStripDrag) return;
+  const dx = e.clientX - tabStripDrag.startX;
+  if (Math.abs(dx) > 6) tabStripDrag.moved = true;
+  tabsContainer.scrollLeft = tabStripDrag.startScroll - dx;
+});
+
+document.addEventListener('mouseup', () => {
+  if (!tabStripDrag) return;
+  if (tabStripDrag.moved) tabStripSuppressClick = true;
+  tabStripDrag = null;
+  tabsContainer.classList.remove('tabs--dragging');
+});
+
+tabsContainer.addEventListener(
+  'click',
+  (e) => {
+    if (!tabStripSuppressClick) return;
+    tabStripSuppressClick = false;
+    e.preventDefault();
+    e.stopPropagation();
+  },
+  true
+);
 
 // ----- Создание нового файла -----
 
@@ -365,11 +403,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-window.addEventListener('resize', () => {
-  applyTabsLayout();
-});
-
-// ----- Инициализация -----
 
 loadState();
 renderTabs();
@@ -383,22 +416,6 @@ textInput.addEventListener('input', () => {
 });
 
 textInput.addEventListener('scroll', syncScroll);
-
-lineNumbers.addEventListener('scroll', syncScrollFromLineNumbers);
-
-const tabsBar = tabsContainer.parentElement;
-if (tabsBar) {
-  tabsBar.addEventListener(
-    'wheel',
-    (e) => {
-      if (tabsContainer.scrollWidth <= tabsContainer.clientWidth + 1) return;
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-      e.preventDefault();
-      tabsContainer.scrollLeft += e.deltaY;
-    },
-    { passive: false }
-  );
-}
 
 textInput.addEventListener('paste', () => {
   setTimeout(() => {

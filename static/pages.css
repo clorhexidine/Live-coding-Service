@@ -457,14 +457,19 @@ body {
   padding: 12px 0;
   overflow-x: hidden;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--sb-thumb) var(--sb-track);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   font-size: 14px;
   line-height: 1.6;
   background: var(--comment-gutter-bg);
   user-select: none;
+  touch-action: none;
+}
+
+.comment-gutter::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .comment-gutter-line {
@@ -496,8 +501,7 @@ body {
   tab-size: 4;
   font-family: inherit;
   border: none;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
   white-space: pre-wrap;
@@ -687,14 +691,6 @@ body {
   background: var(--card-border);
   align-self: stretch;
   margin: 0 4px;
-}
-
-.app-root.app-root--room {
-  min-width: 0;
-}
-
-.app-root--room .editor-wrap {
-  min-height: 0;
 }
 
 .comment-ctx-menu {

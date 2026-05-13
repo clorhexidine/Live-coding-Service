@@ -619,18 +619,10 @@ function refreshEditorDecorations() {
 function syncScrollAll() {
   const st = textInput.scrollTop;
   const sl = textInput.scrollLeft;
-  if (lineNumbers.scrollTop !== st) lineNumbers.scrollTop = st;
-  if (commentGutter.scrollTop !== st) commentGutter.scrollTop = st;
-  if (highlightPre.scrollTop !== st) highlightPre.scrollTop = st;
-  if (highlightPre.scrollLeft !== sl) highlightPre.scrollLeft = sl;
-}
-
-function syncScrollFromGutter(source) {
-  const st = source.scrollTop;
-  if (textInput.scrollTop !== st) textInput.scrollTop = st;
-  if (source !== lineNumbers && lineNumbers.scrollTop !== st) lineNumbers.scrollTop = st;
-  if (source !== commentGutter && commentGutter.scrollTop !== st) commentGutter.scrollTop = st;
-  if (highlightPre.scrollTop !== st) highlightPre.scrollTop = st;
+  lineNumbers.scrollTop = st;
+  commentGutter.scrollTop = st;
+  highlightPre.scrollTop = st;
+  highlightPre.scrollLeft = sl;
 }
 
 function hideCodeTooltip() {
@@ -706,11 +698,6 @@ function renderTabs({ renameFileId = null } = {}) {
   });
 
   updateAddButtonState();
-  applyTabsLayout();
-}
-
-function applyTabsLayout() {
-  /* Вкладки не сжимаем: лишнее уходит в горизонтальный скролл (.tabs overflow-x: auto). */
 }
 
 function applyActiveFileContent() {
@@ -766,6 +753,57 @@ tabsContainer.addEventListener('dblclick', (e) => {
   const index = files.indexOf(file);
   startRenameOnTab(tab, file, index + 1);
 });
+
+/** Горизонтальная прокрутка вкладок: колесо, тач, перетаскивание; без полосы прокрутки (CSS). */
+let tabStripDrag = null;
+let tabStripSuppressClick = false;
+
+tabsContainer.addEventListener(
+  'wheel',
+  (e) => {
+    const el = tabsContainer;
+    if (el.scrollWidth <= el.clientWidth + 1) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY + e.deltaX;
+  },
+  { passive: false }
+);
+
+tabsContainer.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  if (e.target.closest('.tab-rename-input')) return;
+  tabStripDrag = {
+    startX: e.clientX,
+    startScroll: tabsContainer.scrollLeft,
+    moved: false,
+  };
+  tabsContainer.classList.add('tabs--dragging');
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!tabStripDrag) return;
+  const dx = e.clientX - tabStripDrag.startX;
+  if (Math.abs(dx) > 6) tabStripDrag.moved = true;
+  tabsContainer.scrollLeft = tabStripDrag.startScroll - dx;
+});
+
+document.addEventListener('mouseup', () => {
+  if (!tabStripDrag) return;
+  if (tabStripDrag.moved) tabStripSuppressClick = true;
+  tabStripDrag = null;
+  tabsContainer.classList.remove('tabs--dragging');
+});
+
+tabsContainer.addEventListener(
+  'click',
+  (e) => {
+    if (!tabStripSuppressClick) return;
+    tabStripSuppressClick = false;
+    e.preventDefault();
+    e.stopPropagation();
+  },
+  true
+);
 
 function addNewFile() {
   if (files.length >= MAX_FILES) {
@@ -940,7 +978,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('resize', () => {
-  applyTabsLayout();
   if (isCommentPopoverOpen()) {
     positionCommentPopover(commentPopoverAnchorStart, commentPopoverAnchorEnd);
   }
@@ -955,23 +992,6 @@ textInput.addEventListener('input', () => {
 });
 
 textInput.addEventListener('scroll', syncScrollAll);
-
-lineNumbers.addEventListener('scroll', () => syncScrollFromGutter(lineNumbers));
-commentGutter.addEventListener('scroll', () => syncScrollFromGutter(commentGutter));
-
-const tabsBar = tabsContainer.parentElement;
-if (tabsBar) {
-  tabsBar.addEventListener(
-    'wheel',
-    (e) => {
-      if (tabsContainer.scrollWidth <= tabsContainer.clientWidth + 1) return;
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-      e.preventDefault();
-      tabsContainer.scrollLeft += e.deltaY;
-    },
-    { passive: false }
-  );
-}
 
 textInput.addEventListener('paste', () => {
   setTimeout(() => {
