@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,8 +14,17 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 
+def _cookie_secure(request: Request) -> bool:
+    return request.url.scheme == "https"
+
+
 @router.post("/register", response_model=UserOut)
-def register(data: UserCreate, response: Response, db: Session = Depends(get_db)):
+def register(
+    data: UserCreate,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     existing = db.execute(select(User).where(User.username == data.username)).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail="Пользователь с таким логином уже есть")
@@ -31,6 +40,7 @@ def register(data: UserCreate, response: Response, db: Session = Depends(get_db)
         value=token,
         httponly=True,
         samesite="lax",
+        secure=_cookie_secure(request),
         max_age=COOKIE_MAX_AGE,
         path="/",
     )
@@ -38,7 +48,7 @@ def register(data: UserCreate, response: Response, db: Session = Depends(get_db)
 
 
 @router.post("/login", response_model=UserOut)
-def login(data: UserLogin, response: Response, db: Session = Depends(get_db)):
+def login(data: UserLogin, request: Request, response: Response, db: Session = Depends(get_db)):
     user = db.execute(select(User).where(User.username == data.username)).scalar_one_or_none()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
@@ -49,6 +59,7 @@ def login(data: UserLogin, response: Response, db: Session = Depends(get_db)):
         value=token,
         httponly=True,
         samesite="lax",
+        secure=_cookie_secure(request),
         max_age=COOKIE_MAX_AGE,
         path="/",
     )
@@ -56,8 +67,14 @@ def login(data: UserLogin, response: Response, db: Session = Depends(get_db)):
 
 
 @router.post("/logout")
-def logout(response: Response):
-    response.delete_cookie(key=AUTH_COOKIE_NAME, path="/")
+def logout(request: Request, response: Response):
+    response.delete_cookie(
+        key=AUTH_COOKIE_NAME,
+        path="/",
+        secure=_cookie_secure(request),
+        samesite="lax",
+        httponly=True,
+    )
     return {"ok": True}
 
 

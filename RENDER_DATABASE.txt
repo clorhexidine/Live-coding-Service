@@ -1,0 +1,19 @@
+Постоянная база на Render (иначе после Deploy/Restart данные исчезают)
+--------------------------------------------------
+
+1. Dashboard: New + → PostgreSQL (можно Free).
+
+2. Откройте базу → Connections / Info → скопируйте Internal Database URL
+   (postgres:// или postgresql://).
+
+3. Web Service → Environment:
+   - DATABASE_URL = этот URL (или Link/Connect PostgreSQL к сервису — URL подставится сам).
+   - Удалите sqlite://... если оставалось от старых тестов.
+
+4. SECRET_KEY — длинная случайная строка (32+ символов), одна и та же между деплоями.
+
+5. Save Changes → Manual Deploy (или дождитесь автодеплоя).
+
+Пользователи и комнаты тогда в PostgreSQL и переживают рестарты.
+
+Если сервис не стартует с текстом про SQLite — см. логи: нужно обязательно PostgreSQL в DATABASE_URL.
