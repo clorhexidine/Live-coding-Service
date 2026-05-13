@@ -236,7 +236,8 @@ html, body {
   overflow-x: hidden;
   outline: none;
   -webkit-overflow-scrolling: touch;
-  touch-action: manipulation;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
 }
 
 .text-column::placeholder {
@@ -251,6 +252,12 @@ html, body {
 
 .text-column::-webkit-scrollbar {
   width: 16px;
+  height: 0;
+}
+
+.text-column::-webkit-scrollbar:horizontal {
+  display: none;
+  height: 0;
 }
 
 .text-column::-webkit-scrollbar-track {

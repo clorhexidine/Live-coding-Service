@@ -476,7 +476,8 @@ async function loadRoom() {
       content: '',
     });
   }
-  activeFileId = data.active_file_id || files[0].id;
+  /* При каждом открытии комнаты — всегда первый файл в списке (порядок как с сервера). */
+  activeFileId = files[0].id;
 
   comments = (data.comments || []).map((c) => ({
     id: c.id,
@@ -684,6 +685,8 @@ function renderTabs({ renameFileId = null } = {}) {
 
     tab.addEventListener('click', () => {
       if (activeFileId === file.id) return;
+      const cur = getActiveFile();
+      if (cur) cur.content = textInput.value;
       activeFileId = file.id;
       applyActiveFileContent();
       renderTabs();
@@ -810,6 +813,9 @@ function addNewFile() {
     updateAddButtonState();
     return;
   }
+  const prev = getActiveFile();
+  if (prev) prev.content = textInput.value;
+
   const newFile = {
     id: Date.now().toString(36) + Math.random().toString(16).slice(2),
     name: nextUniqueDefaultFileName(),
@@ -817,8 +823,8 @@ function addNewFile() {
   };
   files.push(newFile);
   activeFileId = newFile.id;
-  saveState();
   applyActiveFileContent();
+  saveState();
   renderTabs({ renameFileId: newFile.id });
 }
 
