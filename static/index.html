@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход — Live coding</title>
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/pages.css">
+</head>
+<body>
+  <div class="page-shell">
+    <div class="auth-card">
+      <h1>Live coding</h1>
+      <p class="sub">Вход или регистрация. Ролей и суперпользователя нет — у всех одинаковые возможности.</p>
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab auth-tab--active" id="tab-login">Вход</button>
+        <button type="button" class="auth-tab" id="tab-register">Регистрация</button>
+      </div>
+      <form id="form-login" autocomplete="on">
+        <div class="form-group">
+          <label for="login-username">Логин</label>
+          <input id="login-username" name="username" autocomplete="username" required minlength="3" maxlength="64">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Пароль</label>
+          <input id="login-password" type="password" name="password" autocomplete="current-password" required minlength="6">
+        </div>
+        <button type="submit" class="btn-primary">Войти</button>
+      </form>
+      <form id="form-register" style="display:none" autocomplete="off">
+        <div class="form-group">
+          <label for="reg-username">Логин</label>
+          <input id="reg-username" name="username" autocomplete="off" required minlength="3" maxlength="64">
+        </div>
+        <div class="form-group">
+          <label for="reg-password">Пароль</label>
+          <input id="reg-password" type="password" name="password" autocomplete="new-password" required minlength="6">
+        </div>
+        <button type="submit" class="btn-primary">Создать аккаунт</button>
+      </form>
+      <div class="form-error" id="form-error"></div>
+    </div>
+  </div>
+  <script src="/static/auth.js"></script>
+  <script src="/static/theme.js"></script>
+  <script>
+    const tabLogin = document.getElementById('tab-login');
+    const tabRegister = document.getElementById('tab-register');
+    const formLogin = document.getElementById('form-login');
+    const formRegister = document.getElementById('form-register');
+    const errEl = document.getElementById('form-error');
+
+    tabLogin.addEventListener('click', () => {
+      tabLogin.classList.add('auth-tab--active');
+      tabRegister.classList.remove('auth-tab--active');
+      formLogin.style.display = '';
+      formRegister.style.display = 'none';
+      errEl.textContent = '';
+    });
+    tabRegister.addEventListener('click', () => {
+      tabRegister.classList.add('auth-tab--active');
+      tabLogin.classList.remove('auth-tab--active');
+      formLogin.style.display = 'none';
+      formRegister.style.display = '';
+      errEl.textContent = '';
+    });
+
+    function clearAuthForms() {
+      document.querySelectorAll('#form-login input, #form-register input').forEach((el) => {
+        el.value = '';
+      });
+    }
+
+    window.addEventListener('pageshow', () => {
+      clearAuthForms();
+    });
+
+    async function ensureNotLoggedIn() {
+      const me = await getMe();
+      if (me && me.id) window.location.href = '/home';
+      else clearAuthForms();
+    }
+    ensureNotLoggedIn();
+
+    formLogin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errEl.textContent = '';
+      const fd = new FormData(formLogin);
+      const body = { username: fd.get('username').trim(), password: fd.get('password') };
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        errEl.textContent = j.detail || 'Ошибка входа';
+        return;
+      }
+      window.location.href = '/home';
+    });
+
+    formRegister.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errEl.textContent = '';
+      const fd = new FormData(formRegister);
+      const body = { username: fd.get('username').trim(), password: fd.get('password') };
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        errEl.textContent = typeof j.detail === 'string' ? j.detail : (j.detail?.[0]?.msg || 'Ошибка регистрации');
+        return;
+      }
+      window.location.href = '/home';
+    });
+  </script>
+</body>
+</html>

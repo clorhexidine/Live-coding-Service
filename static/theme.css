@@ -1,0 +1,175 @@
+/* Тема: по умолчанию тёмная (как было). Светлая — [data-theme="light"] на <html>. */
+
+:root {
+  --page-bg: #1a1d24;
+  --page-text: #e8eaef;
+  --card-bg: #232730;
+  --card-border: #3d4454;
+  --muted: #9aa3b2;
+  --muted2: #6b7280;
+  --btn-bg: #2a3140;
+  --btn-hover: #363e52;
+  --input-bg: #1e222b;
+  --input-border: #3d4454;
+  --input-focus: #38bdf8;
+  --primary-btn: #0d9488;
+  --primary-hover: #14b8a6;
+  --h1: #f8fafc;
+  --active-tab: #343b4d;
+  --editor-bg: #2c3140;
+  --editor-text: #f1f5f9;
+  --placeholder: #64748b;
+  --line-num: #94a3b8;
+  --tabs-bar: #252a36;
+  --tab-border: #1e222b;
+  --tab-text: #cbd5e1;
+  --tab-fade-start: rgba(37, 42, 54, 0);
+  --tab-fade-end: rgba(37, 42, 54, 0.92);
+  --tab-add-bg: #334155;
+  --tab-add-text: #f8fafc;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --error: #f87171;
+  --accent-sky: #38bdf8;
+  --accent-sky-dim: rgba(56, 189, 248, 0.18);
+  --accent-violet: #a78bfa;
+  --accent-violet-dim: rgba(167, 139, 250, 0.2);
+  --accent-emerald: #34d399;
+  --accent-emerald-dim: rgba(52, 211, 153, 0.16);
+  --page-bg-mesh: radial-gradient(ellipse 100% 80% at 100% 0%, rgba(56, 189, 248, 0.09), transparent 52%),
+    radial-gradient(ellipse 70% 60% at 0% 100%, rgba(167, 139, 250, 0.1), transparent 50%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(13, 148, 136, 0.06), transparent 60%);
+  --logout-bg: #7f1d1d;
+  --logout-bg-hover: #991b1b;
+  --logout-border: #b91c1c;
+  --logout-text: #fecaca;
+  --create-room-bg: linear-gradient(135deg, #0f766e, #0d9488);
+  --create-room-bg-hover: linear-gradient(135deg, #115e59, #0f766e);
+  --create-room-text: #ecfdf5;
+  --login-submit-bg: linear-gradient(180deg, #0284c7, #0369a1);
+  --login-submit-bg-hover: linear-gradient(180deg, #0ea5e9, #0284c7);
+  --register-submit-bg: linear-gradient(180deg, #7c3aed, #6d28d9);
+  --register-submit-bg-hover: linear-gradient(180deg, #8b5cf6, #7c3aed);
+  --auth-tab-login-active-bg: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(14, 165, 233, 0.12));
+  --auth-tab-login-active-border: rgba(56, 189, 248, 0.55);
+  --auth-tab-register-active-bg: linear-gradient(135deg, rgba(167, 139, 250, 0.28), rgba(139, 92, 246, 0.14));
+  --auth-tab-register-active-border: rgba(167, 139, 250, 0.55);
+  --auth-tab-active-text: #f8fafc;
+  --modal-scrim: rgba(10, 12, 18, 0.72);
+  --comment-bar: #fbbf24;
+  --comment-gutter-mark: rgba(251, 191, 36, 0.38);
+  --comment-gutter-bg: #2c3140;
+  --hl-comment-base: rgba(251, 191, 36, 0.14);
+  --hl-comment-hover: rgba(251, 191, 36, 0.32);
+  --hl-comment-edge: rgba(251, 191, 36, 0.55);
+  --hl-comment-underline: rgba(251, 191, 36, 0.75);
+  --app-bg: #252a36;
+  --menu-bg: #232730;
+  --menu-text: #f3f4f6;
+  --sb-track: #3d4454;
+  --sb-thumb: #64748b;
+  --sb-border: #475569;
+  --btn-primary-text: #fafafa;
+  --title-hover-bg: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="light"] {
+  --page-bg: #eef1f6;
+  --page-text: #1e293b;
+  --card-bg: #ffffff;
+  --card-border: #c7d2e0;
+  --muted: #475569;
+  --muted2: #64748b;
+  --btn-bg: #e2e8f0;
+  --btn-hover: #cbd5e1;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --input-focus: #0284c7;
+  --primary-btn: #0f766e;
+  --primary-hover: #0d9488;
+  --h1: #0f172a;
+  --active-tab: #e2e8f0;
+  --editor-bg: #f8fafc;
+  --editor-text: #0f172a;
+  --placeholder: #94a3b8;
+  --line-num: #64748b;
+  --tabs-bar: #e8edf4;
+  --tab-border: #cbd5e1;
+  --tab-text: #334155;
+  --tab-fade-start: rgba(232, 237, 244, 0);
+  --tab-fade-end: rgba(248, 250, 252, 0.97);
+  --tab-add-bg: #cbd5e1;
+  --tab-add-text: #0f172a;
+  --shadow: rgba(15, 23, 42, 0.12);
+  --error: #dc2626;
+  --accent-sky: #0284c7;
+  --accent-sky-dim: rgba(2, 132, 199, 0.12);
+  --accent-violet: #7c3aed;
+  --accent-violet-dim: rgba(124, 58, 237, 0.12);
+  --accent-emerald: #059669;
+  --accent-emerald-dim: rgba(5, 150, 105, 0.12);
+  --page-bg-mesh: radial-gradient(ellipse 90% 70% at 100% 0%, rgba(2, 132, 199, 0.1), transparent 55%),
+    radial-gradient(ellipse 80% 55% at 0% 100%, rgba(124, 58, 237, 0.09), transparent 50%),
+    radial-gradient(ellipse 45% 35% at 30% 40%, rgba(5, 150, 105, 0.06), transparent 55%);
+  --logout-bg: #b91c1c;
+  --logout-bg-hover: #dc2626;
+  --logout-border: #991b1b;
+  --logout-text: #ffffff;
+  --create-room-bg: linear-gradient(135deg, #059669, #0d9488);
+  --create-room-bg-hover: linear-gradient(135deg, #047857, #0f766e);
+  --create-room-text: #ffffff;
+  --login-submit-bg: linear-gradient(180deg, #0284c7, #0369a1);
+  --login-submit-bg-hover: linear-gradient(180deg, #0ea5e9, #0284c7);
+  --register-submit-bg: linear-gradient(180deg, #7c3aed, #6d28d9);
+  --register-submit-bg-hover: linear-gradient(180deg, #8b5cf6, #7c3aed);
+  --auth-tab-login-active-bg: linear-gradient(135deg, rgba(2, 132, 199, 0.16), rgba(14, 165, 233, 0.1));
+  --auth-tab-login-active-border: rgba(2, 132, 199, 0.45);
+  --auth-tab-register-active-bg: linear-gradient(135deg, rgba(124, 58, 237, 0.18), rgba(167, 139, 250, 0.1));
+  --auth-tab-register-active-border: rgba(124, 58, 237, 0.45);
+  --auth-tab-active-text: #0f172a;
+  --modal-scrim: rgba(15, 23, 42, 0.45);
+  --comment-bar: #d97706;
+  --comment-gutter-mark: rgba(217, 119, 6, 0.35);
+  --comment-gutter-bg: #f8fafc;
+  --hl-comment-base: rgba(245, 158, 11, 0.16);
+  --hl-comment-hover: rgba(245, 158, 11, 0.34);
+  --hl-comment-edge: rgba(180, 83, 9, 0.45);
+  --hl-comment-underline: rgba(180, 83, 9, 0.65);
+  --app-bg: #e2e8f0;
+  --menu-bg: #ffffff;
+  --menu-text: #1e293b;
+  --sb-track: #e2e8f0;
+  --sb-thumb: #94a3b8;
+  --sb-border: #cbd5e1;
+  --btn-primary-text: #fafafa;
+  --title-hover-bg: rgba(2, 132, 199, 0.08);
+}
+
+.theme-toggle {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 9999;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--page-text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 16px var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.theme-toggle:hover {
+  background: var(--btn-hover);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--input-focus);
+  outline-offset: 2px;
+}

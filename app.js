@@ -8,25 +8,51 @@ let files = [];
 let activeFileId = null;
 let nextFileIndex = 2;
 const MAX_FILES = 20;
+const EDITOR_INDENT = '    ';
 
 const STORAGE_KEY = 'editor-files-v1';
 
+const FILE_PREFIX = 'Файл ';
+
 function createFileName(index) {
-  return `File${index}`;
+  return `${FILE_PREFIX}${index}`;
+}
+
+function usedFileNames() {
+  return new Set(files.map((f) => (f.name || '').trim()));
+}
+
+function nextUniqueDefaultFileName() {
+  const used = usedFileNames();
+  let k = files.length + 1;
+  let cand = `${FILE_PREFIX}${k}`;
+  while (used.has(cand)) {
+    k += 1;
+    cand = `${FILE_PREFIX}${k}`;
+  }
+  return cand;
+}
+
+function computeNextFileIndexForPayload() {
+  let maxN = 0;
+  for (const f of files) {
+    const m = /^Файл (\d+)$/.exec((f.name || '').trim());
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!Number.isNaN(n)) maxN = Math.max(maxN, n);
+    }
+  }
+  const fromPattern = maxN + 1;
+  const fromCount = files.length + 1;
+  return Math.max(2, fromPattern, fromCount);
 }
 
 function detectNextIndexFromFiles(list) {
-  let maxIdx = 0;
-  for (const f of list) {
-    const m = /^File(\d+)$/.exec(f.name || '');
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (!Number.isNaN(n) && n > maxIdx) {
-        maxIdx = n;
-      }
-    }
-  }
-  return maxIdx + 1 || 2;
+  const savedFiles = files;
+  files = list;
+  const v = computeNextFileIndexForPayload();
+  files = savedFiles;
+  return v;
 }
 
 function loadState() {
@@ -34,7 +60,7 @@ function loadState() {
   if (!raw) {
     const initialFile = {
       id: Date.now().toString(36),
-      name: createFileName(1),
+      name: 'Файл 1',
       content: ''
     };
     files = [initialFile];
@@ -54,7 +80,7 @@ function loadState() {
     } else {
       const initialFile = {
         id: Date.now().toString(36),
-        name: createFileName(1),
+        name: 'Файл 1',
         content: ''
       };
       files = [initialFile];
@@ -64,7 +90,7 @@ function loadState() {
   } catch {
     const initialFile = {
       id: Date.now().toString(36),
-      name: createFileName(1),
+      name: 'Файл 1',
       content: ''
     };
     files = [initialFile];
@@ -74,6 +100,7 @@ function loadState() {
 }
 
 function saveState() {
+  nextFileIndex = computeNextFileIndexForPayload();
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({ files, activeFileId, nextFileIndex })
@@ -226,12 +253,12 @@ function addNewFile() {
   }
   const newFile = {
     id: Date.now().toString(36) + Math.random().toString(16).slice(2),
-    name: createFileName(nextFileIndex),
+    name: nextUniqueDefaultFileName(),
     content: ''
   };
-  nextFileIndex += 1;
   files.push(newFile);
   activeFileId = newFile.id;
+  nextFileIndex = computeNextFileIndexForPayload();
   saveState();
   applyActiveFileContent();
   renderTabs({ renameFileId: newFile.id });
@@ -362,4 +389,47 @@ textInput.addEventListener('paste', () => {
     updateLineNumbers(textInput.value);
     saveState();
   }, 0);
+});
+
+textInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const value = textInput.value;
+    const start = textInput.selectionStart;
+    const end = textInput.selectionEnd;
+    const newValue = value.slice(0, start) + EDITOR_INDENT + value.slice(end);
+    textInput.value = newValue;
+    const newPos = start + EDITOR_INDENT.length;
+    textInput.setSelectionRange(newPos, newPos);
+    const file = getActiveFile();
+    file.content = newValue;
+    updateLineNumbers(newValue);
+    saveState();
+    return;
+  }
+
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  const value = textInput.value;
+  const start = textInput.selectionStart;
+  const end = textInput.selectionEnd;
+  if (start !== end) return;
+
+  const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+  const lineBeforeCursor = value.substring(lineStart, start);
+  if (!/\{[\t ]*$/.test(lineBeforeCursor)) return;
+
+  const leadingMatch = lineBeforeCursor.match(/^[\t ]*/);
+  const leadingIndent = leadingMatch ? leadingMatch[0] : '';
+
+  e.preventDefault();
+  const insertion = `\n${leadingIndent}${EDITOR_INDENT}`;
+  const newValue = value.slice(0, start) + insertion + value.slice(end);
+  textInput.value = newValue;
+  const newPos = start + insertion.length;
+  textInput.setSelectionRange(newPos, newPos);
+
+  const file = getActiveFile();
+  file.content = newValue;
+  updateLineNumbers(newValue);
+  saveState();
 });

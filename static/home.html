@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Главная — Live coding</title>
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/pages.css">
+</head>
+<body>
+  <div class="dashboard">
+    <header class="dashboard-header">
+      <h1>Комнаты</h1>
+      <button type="button" class="btn-logout" id="btn-logout">Выход</button>
+    </header>
+    <div class="dashboard-actions">
+      <button type="button" class="btn-create" id="btn-create">Создать комнату</button>
+    </div>
+    <p class="empty-hint" id="loading">Загрузка…</p>
+    <ul class="room-list" id="room-list" style="display:none"></ul>
+  </div>
+  <script src="/static/auth.js"></script>
+  <script src="/static/theme.js"></script>
+  <script src="/static/modal.js"></script>
+  <script>
+    const roomList = document.getElementById('room-list');
+    const loading = document.getElementById('loading');
+
+    async function requireAuth() {
+      const me = await getMe();
+      if (!me || !me.id) {
+        window.location.href = '/';
+        return null;
+      }
+      return me;
+    }
+
+    async function loadRooms() {
+      const res = await fetch('/api/rooms', { credentials: 'include' });
+      if (res.status === 401) {
+        window.location.href = '/';
+        return;
+      }
+      if (!res.ok) {
+        loading.textContent = 'Не удалось загрузить комнаты';
+        return;
+      }
+      const rooms = await res.json();
+      loading.style.display = 'none';
+      roomList.style.display = '';
+      roomList.innerHTML = '';
+      if (rooms.length === 0) {
+        loading.style.display = '';
+        loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
+        return;
+      }
+      rooms.forEach((r) => {
+        const li = document.createElement('li');
+        li.className = 'room-item';
+
+        const displayTitle = r.title || `Комната #${r.id}`;
+
+        const titleHost = document.createElement('div');
+        titleHost.className = 'room-title-host';
+
+        const leftBlock = document.createElement('div');
+        leftBlock.className = 'room-left-block';
+
+        const titleStack = document.createElement('div');
+        titleStack.className = 'room-title-stack';
+
+        const titleRow = document.createElement('div');
+        titleRow.className = 'room-title-row';
+
+        const titleCell = document.createElement('div');
+        titleCell.className = 'room-title-cell';
+
+        const titleLabel = document.createElement('span');
+        titleLabel.className = 'room-title-label';
+        titleLabel.textContent = displayTitle;
+        titleLabel.title = 'Двойной щелчок — переименовать';
+
+        titleCell.appendChild(titleLabel);
+        titleRow.appendChild(titleCell);
+        titleStack.appendChild(titleRow);
+
+        if (r.description && r.description.trim()) {
+          const desc = document.createElement('div');
+          desc.className = 'room-list-desc';
+          let t = r.description.trim().split('\n')[0].slice(0, 160);
+          if (r.description.trim().length > 160) t += '…';
+          desc.textContent = t;
+          titleStack.appendChild(desc);
+        }
+
+        const colDivider = document.createElement('div');
+        colDivider.className = 'room-col-divider';
+        colDivider.setAttribute('aria-hidden', 'true');
+
+        const openLink = document.createElement('a');
+        openLink.className = 'room-open-link';
+        openLink.href = `/room/${r.id}`;
+        openLink.textContent = 'Открыть';
+
+        leftBlock.appendChild(titleStack);
+        leftBlock.appendChild(colDivider);
+        leftBlock.appendChild(openLink);
+        titleHost.appendChild(leftBlock);
+
+        function startRoomRename() {
+          if (titleCell.querySelector('.room-rename-input')) return;
+
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'room-rename-input';
+          const startedAs = titleLabel.textContent.trim();
+          input.value = startedAs;
+          titleLabel.style.visibility = 'hidden';
+
+          let done = false;
+
+          async function finish(commit) {
+            if (done) return;
+            done = true;
+            const raw = input.value;
+            if (input.parentNode) input.parentNode.removeChild(input);
+            titleLabel.style.visibility = '';
+
+            if (!commit) return;
+
+            const t = raw.trim();
+            const fallback = r.title || `Комната #${r.id}`;
+            const finalName = t || fallback;
+
+            if (finalName === startedAs) return;
+
+            const res = await fetch(`/api/rooms/${r.id}`, {
+              method: 'PATCH',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: finalName }),
+            });
+            if (res.status === 401) {
+              window.location.href = '/';
+              return;
+            }
+            if (!res.ok) {
+              await showAppAlert('Не удалось переименовать', { title: 'Ошибка' });
+              titleLabel.textContent = startedAs;
+              return;
+            }
+            r.title = finalName;
+            titleLabel.textContent = finalName;
+          }
+
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              finish(true);
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              finish(false);
+            }
+          });
+
+          input.addEventListener('blur', () => finish(true));
+
+          titleCell.appendChild(input);
+          input.focus();
+          input.select();
+        }
+
+        titleLabel.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          startRoomRename();
+        });
+
+        const actions = document.createElement('div');
+        actions.className = 'room-actions';
+
+        const btnRename = document.createElement('button');
+        btnRename.type = 'button';
+        btnRename.className = 'btn-room-action btn-room-rename';
+        btnRename.title = 'Переименовать';
+        btnRename.setAttribute('aria-label', 'Переименовать');
+        btnRename.textContent = '✎';
+        btnRename.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          startRoomRename();
+        });
+
+        const btnDelete = document.createElement('button');
+        btnDelete.type = 'button';
+        btnDelete.className = 'btn-room-action btn-room-action--danger';
+        btnDelete.textContent = 'Удалить';
+        btnDelete.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const ok = await showAppConfirm({
+            title: 'Удалить комнату',
+            message: `Удалить комнату «${titleLabel.textContent}»?\n\nВсе файлы в ней будут удалены.`,
+            confirmText: 'Удалить',
+            cancelText: 'Отмена',
+            danger: true,
+          });
+          if (!ok) return;
+          const res = await fetch(`/api/rooms/${r.id}`, {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+          if (res.status === 401) {
+            window.location.href = '/';
+            return;
+          }
+          if (!res.ok) {
+            await showAppAlert('Не удалось удалить комнату', { title: 'Ошибка' });
+            return;
+          }
+          li.remove();
+          if (roomList.children.length === 0) {
+            loading.style.display = '';
+            loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
+          }
+        });
+
+        actions.appendChild(btnRename);
+        actions.appendChild(btnDelete);
+        li.appendChild(titleHost);
+        li.appendChild(actions);
+        roomList.appendChild(li);
+      });
+    }
+
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      window.location.href = '/';
+    });
+
+    document.getElementById('btn-create').addEventListener('click', async () => {
+      const res = await fetch('/api/rooms', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: null }),
+      });
+      if (res.status === 401) {
+        window.location.href = '/';
+        return;
+      }
+      if (!res.ok) {
+        await showAppAlert('Не удалось создать комнату', { title: 'Ошибка' });
+        return;
+      }
+      const room = await res.json();
+      window.location.href = `/room/${room.id}`;
+    });
+
+    (async () => {
+      await requireAuth();
+      await loadRooms();
+    })();
+  </script>
+</body>
+</html>
