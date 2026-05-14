@@ -146,10 +146,31 @@ function editRegionBounds(oldStr, newStr) {
   return { o0: a, o1: bo + 1, n0: a, n1: bn + 1 };
 }
 
-function mapOldIndexToNew(p, o0, o1, n0, n1) {
-  if (p <= o0) return p;
-  if (p >= o1) return p + (n1 - n0) - (o1 - o0);
-  return n0 + Math.min(p - o0, n1 - n0);
+/**
+ * Карта индекса начала выделения комментария (первый символ внутри диапазона).
+ * Вставка строго слева от первого символа (на позиции start) сдвигает весь диапазон, не расширяя его.
+ */
+function mapCommentStart(pos, o0, o1, n0, n1) {
+  const ins = n1 - n0;
+  const del = o1 - o0;
+  const delta = ins - del;
+  if (pos < o0) return pos;
+  if (o0 === o1 && pos === o0) return pos + ins;
+  if (pos >= o1) return pos + delta;
+  return n0 + Math.min(pos - o0, ins);
+}
+
+/**
+ * Карта исключающего конца [start, end): вставка на позиции end не «впитывается» в комментарий.
+ */
+function mapCommentExclusiveEnd(pos, o0, o1, n0, n1) {
+  const ins = n1 - n0;
+  const del = o1 - o0;
+  const delta = ins - del;
+  if (pos < o0) return pos;
+  if (o0 === o1 && pos === o0) return pos;
+  if (pos > o1) return pos + delta;
+  return n0 + Math.min(pos - o0, ins);
 }
 
 /** Сдвигает диапазоны комментариев активного файла при замене текста old→new. */
@@ -163,8 +184,8 @@ function syncCommentsToTextChange(fid, oldText, newText) {
       out.push(c);
       continue;
     }
-    const ns = mapOldIndexToNew(c.start, o0, o1, n0, n1);
-    const ne = mapOldIndexToNew(c.end, o0, o1, n0, n1);
+    const ns = mapCommentStart(c.start, o0, o1, n0, n1);
+    const ne = mapCommentExclusiveEnd(c.end, o0, o1, n0, n1);
     if (ne > ns) out.push({ ...c, start: ns, end: ne });
   }
   comments = out;
@@ -679,46 +700,55 @@ function updateAddButtonState() {
   tabAddButton.title = disabled ? 'Максимум 20 файлов' : 'Новый файл';
 }
 
+/** Последняя измеренная высота одной строки (для полоски комментария у переносов). */
+let lastEditorSingleLinePx = 22;
+
 function measureVisualLineHeights(text) {
   const lines = text.split('\n');
-  const cs = getComputedStyle(textInput);
-  const padL = parseFloat(cs.paddingLeft) || 0;
-  const padR = parseFloat(cs.paddingRight) || 0;
-  const contentW = Math.max(32, textInput.clientWidth - padL - padR);
+  const wrap = textInput && textInput.parentElement;
+  const taCs = getComputedStyle(textInput);
+  const taPadL = parseFloat(taCs.paddingLeft) || 0;
+  const taPadR = parseFloat(taCs.paddingRight) || 0;
+  const contentW = Math.max(32, textInput.clientWidth - taPadL - taPadR);
+
   if (!lineHeightsMeasureEl) {
     lineHeightsMeasureEl = document.createElement('div');
     lineHeightsMeasureEl.setAttribute('aria-hidden', 'true');
     lineHeightsMeasureEl.className = 'editor-line-height-probe';
-    document.body.appendChild(lineHeightsMeasureEl);
+    if (wrap) wrap.appendChild(lineHeightsMeasureEl);
+    else document.body.appendChild(lineHeightsMeasureEl);
   }
   const el = lineHeightsMeasureEl;
   el.style.boxSizing = 'border-box';
   el.style.position = 'absolute';
   el.style.visibility = 'hidden';
   el.style.pointerEvents = 'none';
-  el.style.left = '-99999px';
+  el.style.left = '0';
   el.style.top = '0';
   el.style.margin = '0';
   el.style.border = '0';
   el.style.padding = '0';
   el.style.width = `${contentW}px`;
+  el.style.maxWidth = '100%';
   el.style.whiteSpace = 'pre-wrap';
   el.style.overflowWrap = 'break-word';
   el.style.wordWrap = 'break-word';
   el.style.wordBreak = 'break-word';
-  el.style.font = cs.font;
-  el.style.fontSize = cs.fontSize;
-  el.style.lineHeight = cs.lineHeight;
-  el.style.fontFamily = cs.fontFamily;
-  el.style.letterSpacing = cs.letterSpacing || '';
-  const ts = cs.tabSize || '4';
+  el.style.font = taCs.font;
+  el.style.fontSize = taCs.fontSize;
+  el.style.lineHeight = taCs.lineHeight;
+  el.style.fontFamily = taCs.fontFamily;
+  el.style.letterSpacing = taCs.letterSpacing || '';
+  const ts = taCs.tabSize || '4';
   el.style.tabSize = ts;
   el.style.MozTabSize = ts;
+  el.style.webkitTextSizeAdjust = '100%';
+  el.style.textSizeAdjust = '100%';
 
   const fallbackH = (() => {
-    const lh = parseFloat(cs.lineHeight);
+    const lh = parseFloat(taCs.lineHeight);
     if (!Number.isNaN(lh)) return lh;
-    const fs = parseFloat(cs.fontSize) || 14;
+    const fs = parseFloat(taCs.fontSize) || 14;
     return fs * 1.6;
   })();
 
@@ -728,6 +758,8 @@ function measureVisualLineHeights(text) {
     el.textContent = piece;
     heights.push(el.offsetHeight || fallbackH);
   }
+  el.textContent = 'M';
+  lastEditorSingleLinePx = el.offsetHeight || fallbackH;
   return heights;
 }
 
@@ -741,12 +773,16 @@ function rebuildLineNumbers(text, heights) {
     span.style.boxSizing = 'border-box';
     span.style.minHeight = `${h}px`;
     span.style.height = `${h}px`;
+    span.style.display = 'flex';
+    span.style.alignItems = 'flex-start';
+    span.style.justifyContent = 'flex-end';
     lineNumbers.appendChild(span);
   }
 }
 
 function rebuildCommentGutter(text, heights) {
   const fid = activeFileId;
+  const slh = lastEditorSingleLinePx || 22;
   commentGutter.innerHTML = '';
   for (let i = 0; i < heights.length; i += 1) {
     const div = document.createElement('div');
@@ -755,10 +791,22 @@ function rebuildCommentGutter(text, heights) {
     div.style.boxSizing = 'border-box';
     div.style.minHeight = `${h}px`;
     div.style.height = `${h}px`;
+    div.style.display = 'flex';
+    div.style.flexDirection = 'column';
+    div.style.justifyContent = 'flex-start';
+    div.style.alignItems = 'stretch';
     const list = commentsTouchingLine(text, i, fid);
     if (list.length) {
       div.classList.add('comment-gutter-line--marked');
-      div.title = list.map((c) => c.body).join('\n---\n');
+      const barH = Math.min(slh, h);
+      const bar = document.createElement('div');
+      bar.className = 'comment-gutter-bar';
+      bar.style.boxSizing = 'border-box';
+      bar.style.flexShrink = '0';
+      bar.style.height = `${barH}px`;
+      bar.style.minHeight = `${barH}px`;
+      bar.title = list.map((c) => c.body).join('\n---\n');
+      div.appendChild(bar);
     }
     commentGutter.appendChild(div);
   }
@@ -1279,7 +1327,12 @@ textInput.addEventListener('keydown', (e) => {
   const end = textInput.selectionEnd;
   if (start !== end) return;
 
-  const indentSuffix = computeEnterIndentSuffix(value, start);
+  const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+  const lineBeforeCursor = value.substring(lineStart, start);
+  let indentSuffix = computeEnterIndentSuffix(value, start);
+  if (/\{[\t ]*$/.test(lineBeforeCursor)) {
+    indentSuffix += EDITOR_INDENT;
+  }
   e.preventDefault();
   const oldVal = value;
   const insertion = `\n${indentSuffix}`;
@@ -1387,6 +1440,23 @@ async function boot() {
   }
 
   connectRoomSocket();
+
+  let editorLayoutRoTimer = null;
+  const editorWrap = textInput && textInput.parentElement;
+  const scheduleEditorLayoutRefresh = () => {
+    if (editorLayoutRoTimer) clearTimeout(editorLayoutRoTimer);
+    editorLayoutRoTimer = setTimeout(() => {
+      editorLayoutRoTimer = null;
+      refreshEditorDecorations();
+    }, 50);
+  };
+  if (editorWrap && window.ResizeObserver) {
+    const ro = new ResizeObserver(() => scheduleEditorLayoutRefresh());
+    ro.observe(editorWrap);
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scheduleEditorLayoutRefresh);
+  }
 
   window.addEventListener('beforeunload', () => {
     if (wsReconnectTimer) clearTimeout(wsReconnectTimer);

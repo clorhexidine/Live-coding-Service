@@ -287,15 +287,15 @@ body {
 }
 
 .room-item-end {
-  flex: 0 0 11.5rem;
+  flex: 0 0 5.75rem;
   align-self: stretch;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--card-border);
   padding: 0;
-  width: 11.5rem;
-  min-width: 11.5rem;
-  max-width: 11.5rem;
+  width: 5.75rem;
+  min-width: 5.75rem;
+  max-width: 5.75rem;
 }
 
 .room-item-end .btn-room-side {
@@ -309,17 +309,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 10px;
+  padding: 10px 4px;
   box-sizing: border-box;
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.68rem;
   font-weight: 600;
   cursor: pointer;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   text-align: center;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .room-item-end .btn-room-side:hover {
@@ -611,10 +612,15 @@ body {
 
 .comment-gutter-line {
   box-sizing: border-box;
+}
+
+.comment-gutter-bar {
+  box-sizing: border-box;
+  width: 100%;
   border-left: 3px solid transparent;
 }
 
-.comment-gutter-line--marked {
+.comment-gutter-line--marked .comment-gutter-bar {
   border-left-color: var(--comment-bar);
   background: var(--comment-gutter-mark);
 }
