@@ -15,6 +15,55 @@
         <a href="/home" class="btn-back" id="btn-back">← На главную</a>
         <span class="room-title room-title--inline room-title--topbar" id="room-title">Комната</span>
         <div class="room-topbar-end">
+          <div class="room-download-wrap" id="room-download-wrap">
+            <button
+              type="button"
+              class="btn-room-gear btn-room-gear--toolbar btn-room-download"
+              id="btn-room-download"
+              aria-label="Скачать"
+              aria-haspopup="menu"
+              aria-expanded="false"
+            >
+              <svg class="btn-room-download-svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
+                />
+              </svg>
+            </button>
+            <div id="room-download-menu" class="room-download-menu" role="menu">
+              <button type="button" class="room-download-menu-item" data-download="file" role="menuitem">
+                <svg class="room-download-menu-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
+                  />
+                </svg>
+                <span>Скачать файл</span>
+              </button>
+              <button type="button" class="room-download-menu-item" data-download="project" role="menuitem">
+                <svg class="room-download-menu-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
+                  />
+                </svg>
+                <span>Скачать проект</span>
+              </button>
+            </div>
+          </div>
           <button type="button" class="btn-room-gear btn-room-gear--toolbar" id="btn-room-settings" hidden aria-label="Настройки комнаты">⚙</button>
           <button type="button" class="btn-room-leave-toolbar" id="btn-room-leave" hidden>Выйти из комнаты</button>
         </div>
@@ -64,6 +113,7 @@
   <script src="/static/modal.js"></script>
   <script src="/static/pin-ui.js"></script>
   <script src="/static/room-settings.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="/static/room.js"></script>
 </body>
 </html>

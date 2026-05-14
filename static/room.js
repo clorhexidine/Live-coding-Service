@@ -22,6 +22,9 @@ const commentPopoverLabel = document.getElementById('comment-popover-label');
 const commentCtxMenu = document.getElementById('comment-ctx-menu');
 const btnRoomSettings = document.getElementById('btn-room-settings');
 const btnRoomLeave = document.getElementById('btn-room-leave');
+const btnRoomDownload = document.getElementById('btn-room-download');
+const roomDownloadMenu = document.getElementById('room-download-menu');
+const roomDownloadWrap = document.getElementById('room-download-wrap');
 
 let files = [];
 let activeFileId = null;
@@ -693,6 +696,103 @@ function getActiveFile() {
   return files.find((f) => f.id === activeFileId) || files[0];
 }
 
+function sanitizeDownloadFileName(name) {
+  let s = String(name ?? 'file')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\u0000/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 180);
+  return s || 'file';
+}
+
+function syncActiveEditorToFileBeforeExport() {
+  const file = getActiveFile();
+  if (file) file.content = textInput.value;
+}
+
+function triggerBlobDownload(blob, filename) {
+  const a = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  requestAnimationFrame(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  });
+}
+
+function closeRoomDownloadMenu() {
+  if (roomDownloadMenu) roomDownloadMenu.classList.remove('room-download-menu--open');
+  if (btnRoomDownload) btnRoomDownload.setAttribute('aria-expanded', 'false');
+}
+
+function openRoomDownloadMenu() {
+  if (roomDownloadMenu) roomDownloadMenu.classList.add('room-download-menu--open');
+  if (btnRoomDownload) btnRoomDownload.setAttribute('aria-expanded', 'true');
+}
+
+function toggleRoomDownloadMenu(e) {
+  if (e) e.stopPropagation();
+  if (!roomDownloadMenu) return;
+  if (roomDownloadMenu.classList.contains('room-download-menu--open')) closeRoomDownloadMenu();
+  else openRoomDownloadMenu();
+}
+
+function downloadCurrentFileAsTxt() {
+  syncActiveEditorToFileBeforeExport();
+  const file = getActiveFile();
+  if (!file) {
+    void showAppAlert('Нет открытого файла', { title: 'Скачивание' });
+    return;
+  }
+  let base = sanitizeDownloadFileName(file.name || 'file');
+  if (!/\.txt$/i.test(base)) base = `${base}.txt`;
+  const blob = new Blob([file.content ?? ''], { type: 'text/plain;charset=utf-8' });
+  triggerBlobDownload(blob, base);
+}
+
+async function downloadProjectAsZip() {
+  if (typeof JSZip === 'undefined') {
+    await showAppAlert('Не удалось загрузить модуль архива. Проверьте соединение и обновите страницу.', {
+      title: 'Ошибка',
+    });
+    return;
+  }
+  syncActiveEditorToFileBeforeExport();
+  const zip = new JSZip();
+  const used = new Set();
+  for (const f of files) {
+    let base = sanitizeDownloadFileName(f.name || 'file');
+    if (!/\.txt$/i.test(base)) base = `${base}.txt`;
+    let entry = base;
+    let n = 1;
+    while (used.has(entry.toLowerCase())) {
+      const stem = base.replace(/\.txt$/i, '');
+      entry = `${stem}_${n}.txt`;
+      n += 1;
+    }
+    used.add(entry.toLowerCase());
+    zip.file(entry, f.content ?? '');
+  }
+  try {
+    const blob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    });
+    const titleRaw = (roomTitleEl.textContent || `Комната_${ROOM_ID}`).trim();
+    let zipName = sanitizeDownloadFileName(titleRaw);
+    if (!/\.zip$/i.test(zipName)) zipName = `${zipName}.zip`;
+    triggerBlobDownload(blob, zipName);
+  } catch (_) {
+    await showAppAlert('Не удалось собрать архив', { title: 'Ошибка' });
+  }
+}
+
 function updateAddButtonState() {
   const disabled = files.length >= MAX_FILES;
   tabAddButton.disabled = disabled;
@@ -1216,6 +1316,7 @@ document.addEventListener('keydown', (e) => {
     }
     closeTabMenu();
     closeCommentCtxMenu();
+    closeRoomDownloadMenu();
     hideCodeTooltip();
   }
 });
@@ -1437,6 +1538,7 @@ async function boot() {
 
   if (btnRoomSettings) {
     btnRoomSettings.addEventListener('click', () => {
+      closeRoomDownloadMenu();
       openRoomSettingsModal(ROOM_ID, {
         onDeleted: () => {
           window.location.href = '/home';
@@ -1478,6 +1580,31 @@ async function boot() {
       window.location.href = '/home';
     });
   }
+
+  if (btnRoomDownload && roomDownloadMenu && roomDownloadWrap) {
+    btnRoomDownload.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleRoomDownloadMenu(e);
+    });
+    roomDownloadMenu.querySelectorAll('[data-download]').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        closeRoomDownloadMenu();
+        const kind = btn.getAttribute('data-download');
+        if (kind === 'file') downloadCurrentFileAsTxt();
+        else if (kind === 'project') await downloadProjectAsZip();
+      });
+    });
+  }
+
+  document.addEventListener('mousedown', (e) => {
+    if (!roomDownloadWrap || !roomDownloadMenu || !roomDownloadMenu.classList.contains('room-download-menu--open')) {
+      return;
+    }
+    if (!roomDownloadWrap.contains(e.target)) {
+      closeRoomDownloadMenu();
+    }
+  });
 
   connectRoomSocket();
 
