@@ -1,3 +1,13 @@
+function tabIdHeaders() {
+  if (!window.LIVE_CLIENT_TAB_ID) {
+    window.LIVE_CLIENT_TAB_ID =
+      window.crypto && window.crypto.randomUUID
+        ? window.crypto.randomUUID()
+        : `t-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+  return { 'X-Client-Tab-Id': window.LIVE_CLIENT_TAB_ID };
+}
+
 /**
  * Модальное окно настроек комнаты (только владелец). Требует: modal.js, pin-ui.js.
  * @param {number} roomId
@@ -252,7 +262,10 @@ async function openRoomSettingsModal(roomId, hooks) {
     const res = await fetch(`/api/rooms/${roomId}/settings`, {
       method: 'PATCH',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...tabIdHeaders(),
+      },
       body: JSON.stringify(body),
     });
     if (res.status === 401) {

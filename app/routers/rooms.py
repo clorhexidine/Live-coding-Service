@@ -256,8 +256,10 @@ def get_room_settings(
 def patch_room_settings(
     room_id: int,
     data: RoomSettingsPatch,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    x_client_tab_id: str | None = Header(default=None, alias="X-Client-Tab-Id"),
 ):
     room = _get_room_or_403(db, user, room_id)
     _require_room_owner(room, user)
@@ -289,13 +291,27 @@ def patch_room_settings(
         room.invite_code = _unique_invite_code(db)
         db.commit()
         db.refresh(room)
-    return RoomSettingsOut(
+    out = RoomSettingsOut(
         title=room.title,
         invite_path=f"/join/{room.invite_token}",
         invite_code=room.invite_code or "",
         has_room_password=bool(room.room_password_hash),
         members=_members_for_settings(db, room),
     )
+    if data.title is not None:
+        seq = hub.next_seq(room_id)
+        background_tasks.add_task(
+            hub.broadcast_json,
+            room_id,
+            {
+                "type": "room_meta",
+                "title": room.title,
+                "description": room.description,
+                "seq": seq,
+                "sender_tab_id": (x_client_tab_id or "")[:80],
+            },
+        )
+    return out
 
 
 @router.get("", response_model=list[RoomListItem])
@@ -442,8 +458,10 @@ def save_room_state(
 def update_room(
     room_id: int,
     data: RoomUpdate,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    x_client_tab_id: str | None = Header(default=None, alias="X-Client-Tab-Id"),
 ):
     room = _get_room_or_403(db, user, room_id)
     _require_room_owner(room, user)
@@ -453,6 +471,20 @@ def update_room(
         room.description = data.description
     db.commit()
     db.refresh(room)
+    patch_fields = data.model_dump(exclude_unset=True)
+    if patch_fields:
+        seq = hub.next_seq(room_id)
+        background_tasks.add_task(
+            hub.broadcast_json,
+            room_id,
+            {
+                "type": "room_meta",
+                "title": room.title,
+                "description": room.description,
+                "seq": seq,
+                "sender_tab_id": (x_client_tab_id or "")[:80],
+            },
+        )
     return room
 
 

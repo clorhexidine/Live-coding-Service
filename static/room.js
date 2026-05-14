@@ -34,6 +34,7 @@ const CLIENT_TAB_ID =
   window.crypto && window.crypto.randomUUID
     ? window.crypto.randomUUID()
     : `t-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+window.LIVE_CLIENT_TAB_ID = CLIENT_TAB_ID;
 
 /** @type {WebSocket | null} */
 let roomSocket = null;
@@ -52,6 +53,8 @@ let saveTimer = null;
 let descSaveTimer = null;
 let roomPollTimer = null;
 let roomWsPingTimer = null;
+/** @type {HTMLDivElement | null} */
+let lineHeightsMeasureEl = null;
 
 /** @type {'add'|'edit'|null} */
 let commentPopoverMode = null;
@@ -125,6 +128,46 @@ function commentsTouchingLine(text, lineIdx, fileId) {
       c.file_id === fileId &&
       !(c.end <= lineStart || c.start >= lineEnd)
   );
+}
+
+/** Границы одной правки между oldStr и newStr (префикс/суффикс совпадают). */
+function editRegionBounds(oldStr, newStr) {
+  if (oldStr === newStr) return null;
+  let a = 0;
+  const lo = oldStr.length;
+  const ln = newStr.length;
+  while (a < lo && a < ln && oldStr[a] === newStr[a]) a += 1;
+  let bo = lo - 1;
+  let bn = ln - 1;
+  while (bo >= a && bn >= a && oldStr[bo] === newStr[bn]) {
+    bo -= 1;
+    bn -= 1;
+  }
+  return { o0: a, o1: bo + 1, n0: a, n1: bn + 1 };
+}
+
+function mapOldIndexToNew(p, o0, o1, n0, n1) {
+  if (p <= o0) return p;
+  if (p >= o1) return p + (n1 - n0) - (o1 - o0);
+  return n0 + Math.min(p - o0, n1 - n0);
+}
+
+/** Сдвигает диапазоны комментариев активного файла при замене текста old→new. */
+function syncCommentsToTextChange(fid, oldText, newText) {
+  const b = editRegionBounds(oldText, newText);
+  if (!b) return;
+  const { o0, o1, n0, n1 } = b;
+  const out = [];
+  for (const c of comments) {
+    if (c.file_id !== fid) {
+      out.push(c);
+      continue;
+    }
+    const ns = mapOldIndexToNew(c.start, o0, o1, n0, n1);
+    const ne = mapOldIndexToNew(c.end, o0, o1, n0, n1);
+    if (ne > ns) out.push({ ...c, start: ns, end: ne });
+  }
+  comments = out;
 }
 
 function clampCommentsForActiveFile() {
@@ -521,6 +564,11 @@ function handleWsMessage(ev) {
   if (msg.type === 'error') {
     return;
   }
+  if (msg.type === 'room_meta') {
+    if (msg.sender_tab_id && msg.sender_tab_id === CLIENT_TAB_ID) return;
+    applyRoomMetaFromWs(msg);
+    return;
+  }
   if (msg.type !== 'state') return;
   if (msg.sender_tab_id && msg.sender_tab_id === CLIENT_TAB_ID) return;
   const seq = msg.seq || 0;
@@ -533,6 +581,18 @@ function handleWsMessage(ev) {
   applyActiveFileContent();
   refreshEditorDecorations();
   updateAddCommentButtonState();
+}
+
+function applyRoomMetaFromWs(msg) {
+  if (msg.title != null) {
+    const t = msg.title || `Комната #${ROOM_ID}`;
+    roomTitleEl.textContent = t;
+    document.title = `${t} — Live coding`;
+  }
+  if (msg.description !== undefined && roomDescEl) {
+    roomDescEl.value = msg.description || '';
+    requestAnimationFrame(() => autoSizeRoomDesc());
+  }
 }
 
 function scheduleWsReconnect() {
@@ -595,7 +655,10 @@ function scheduleDescriptionSave() {
       const res = await fetch(`/api/rooms/${ROOM_ID}`, {
         method: 'PATCH',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Tab-Id': CLIENT_TAB_ID,
+        },
         body: JSON.stringify({ description: roomDescEl.value }),
       });
       if (res.status === 401) window.location.href = '/';
@@ -616,29 +679,82 @@ function updateAddButtonState() {
   tabAddButton.title = disabled ? 'Максимум 20 файлов' : 'Новый файл';
 }
 
-function countLinesFromText(text) {
-  if (!text) return 1;
-  return text.split('\n').length;
+function measureVisualLineHeights(text) {
+  const lines = text.split('\n');
+  const cs = getComputedStyle(textInput);
+  const padL = parseFloat(cs.paddingLeft) || 0;
+  const padR = parseFloat(cs.paddingRight) || 0;
+  const contentW = Math.max(32, textInput.clientWidth - padL - padR);
+  if (!lineHeightsMeasureEl) {
+    lineHeightsMeasureEl = document.createElement('div');
+    lineHeightsMeasureEl.setAttribute('aria-hidden', 'true');
+    lineHeightsMeasureEl.className = 'editor-line-height-probe';
+    document.body.appendChild(lineHeightsMeasureEl);
+  }
+  const el = lineHeightsMeasureEl;
+  el.style.boxSizing = 'border-box';
+  el.style.position = 'absolute';
+  el.style.visibility = 'hidden';
+  el.style.pointerEvents = 'none';
+  el.style.left = '-99999px';
+  el.style.top = '0';
+  el.style.margin = '0';
+  el.style.border = '0';
+  el.style.padding = '0';
+  el.style.width = `${contentW}px`;
+  el.style.whiteSpace = 'pre-wrap';
+  el.style.overflowWrap = 'break-word';
+  el.style.wordWrap = 'break-word';
+  el.style.wordBreak = 'break-word';
+  el.style.font = cs.font;
+  el.style.fontSize = cs.fontSize;
+  el.style.lineHeight = cs.lineHeight;
+  el.style.fontFamily = cs.fontFamily;
+  el.style.letterSpacing = cs.letterSpacing || '';
+  const ts = cs.tabSize || '4';
+  el.style.tabSize = ts;
+  el.style.MozTabSize = ts;
+
+  const fallbackH = (() => {
+    const lh = parseFloat(cs.lineHeight);
+    if (!Number.isNaN(lh)) return lh;
+    const fs = parseFloat(cs.fontSize) || 14;
+    return fs * 1.6;
+  })();
+
+  const heights = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const piece = lines[i].length ? lines[i] : '\u00a0';
+    el.textContent = piece;
+    heights.push(el.offsetHeight || fallbackH);
+  }
+  return heights;
 }
 
-function rebuildLineNumbers(text) {
-  const n = countLinesFromText(text);
+function rebuildLineNumbers(text, heights) {
   lineNumbers.innerHTML = '';
-  for (let i = 1; i <= n; i++) {
+  for (let i = 0; i < heights.length; i += 1) {
     const span = document.createElement('span');
     span.className = 'line-num';
-    span.textContent = i;
+    span.textContent = String(i + 1);
+    const h = heights[i];
+    span.style.boxSizing = 'border-box';
+    span.style.minHeight = `${h}px`;
+    span.style.height = `${h}px`;
     lineNumbers.appendChild(span);
   }
 }
 
-function rebuildCommentGutter(text) {
-  const n = countLinesFromText(text);
+function rebuildCommentGutter(text, heights) {
   const fid = activeFileId;
   commentGutter.innerHTML = '';
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < heights.length; i += 1) {
     const div = document.createElement('div');
     div.className = 'comment-gutter-line';
+    const h = heights[i];
+    div.style.boxSizing = 'border-box';
+    div.style.minHeight = `${h}px`;
+    div.style.height = `${h}px`;
     const list = commentsTouchingLine(text, i, fid);
     if (list.length) {
       div.classList.add('comment-gutter-line--marked');
@@ -673,8 +789,9 @@ function updateHighlightPre(text) {
 
 function refreshEditorDecorations() {
   const text = textInput.value;
-  rebuildLineNumbers(text);
-  rebuildCommentGutter(text);
+  const heights = measureVisualLineHeights(text);
+  rebuildLineNumbers(text, heights);
+  rebuildCommentGutter(text, heights);
   updateHighlightPre(text);
   syncScrollAll();
 }
@@ -1049,11 +1166,15 @@ window.addEventListener('resize', () => {
   if (isCommentPopoverOpen()) {
     positionCommentPopover(commentPopoverAnchorStart, commentPopoverAnchorEnd);
   }
+  requestAnimationFrame(() => refreshEditorDecorations());
 });
 
 textInput.addEventListener('input', () => {
   const file = getActiveFile();
-  file.content = textInput.value;
+  const oldText = file.content;
+  const newText = textInput.value;
+  syncCommentsToTextChange(activeFileId, oldText, newText);
+  file.content = newText;
   clampCommentsForActiveFile();
   refreshEditorDecorations();
   saveState();
@@ -1064,7 +1185,10 @@ textInput.addEventListener('scroll', syncScrollAll);
 textInput.addEventListener('paste', () => {
   setTimeout(() => {
     const file = getActiveFile();
-    file.content = textInput.value;
+    const oldText = file.content;
+    const newText = textInput.value;
+    syncCommentsToTextChange(activeFileId, oldText, newText);
+    file.content = newText;
     clampCommentsForActiveFile();
     refreshEditorDecorations();
     saveState();
@@ -1107,17 +1231,40 @@ textInput.addEventListener('select', scheduleUpdateAddCommentButton);
 textInput.addEventListener('keyup', scheduleUpdateAddCommentButton);
 textInput.addEventListener('mouseup', scheduleUpdateAddCommentButton);
 
+function computeEnterIndentSuffix(value, cursorPos) {
+  const lineStart = value.lastIndexOf('\n', cursorPos - 1) + 1;
+  const curLineToCursor = value.slice(lineStart, cursorPos);
+  if (/^[\t ]*$/.test(curLineToCursor)) {
+    return curLineToCursor;
+  }
+  if (lineStart === 0) {
+    return '';
+  }
+  const prevLineStart = value.lastIndexOf('\n', lineStart - 2) + 1;
+  const prevLine = value.slice(prevLineStart, lineStart - 1);
+  const m = prevLine.match(/^[\t ]*/);
+  const lead = m ? m[0] : '';
+  const afterLead = prevLine.slice(lead.length);
+  const idx = afterLead.search(/[^\t ]/);
+  if (idx === -1) {
+    return lead + afterLead;
+  }
+  return lead + afterLead.slice(0, idx);
+}
+
 textInput.addEventListener('keydown', (e) => {
   if (e.key === 'Tab') {
     e.preventDefault();
     const value = textInput.value;
     const start = textInput.selectionStart;
     const end = textInput.selectionEnd;
+    const oldValue = value;
     const newValue = value.slice(0, start) + EDITOR_INDENT + value.slice(end);
     textInput.value = newValue;
     const newPos = start + EDITOR_INDENT.length;
     textInput.setSelectionRange(newPos, newPos);
     const file = getActiveFile();
+    syncCommentsToTextChange(activeFileId, oldValue, newValue);
     file.content = newValue;
     clampCommentsForActiveFile();
     refreshEditorDecorations();
@@ -1132,21 +1279,17 @@ textInput.addEventListener('keydown', (e) => {
   const end = textInput.selectionEnd;
   if (start !== end) return;
 
-  const lineStart = value.lastIndexOf('\n', start - 1) + 1;
-  const lineBeforeCursor = value.substring(lineStart, start);
-  if (!/\{[\t ]*$/.test(lineBeforeCursor)) return;
-
-  const leadingMatch = lineBeforeCursor.match(/^[\t ]*/);
-  const leadingIndent = leadingMatch ? leadingMatch[0] : '';
-
+  const indentSuffix = computeEnterIndentSuffix(value, start);
   e.preventDefault();
-  const insertion = `\n${leadingIndent}${EDITOR_INDENT}`;
+  const oldVal = value;
+  const insertion = `\n${indentSuffix}`;
   const newValue = value.slice(0, start) + insertion + value.slice(end);
   textInput.value = newValue;
   const newPos = start + insertion.length;
   textInput.setSelectionRange(newPos, newPos);
 
   const file = getActiveFile();
+  syncCommentsToTextChange(activeFileId, oldVal, newValue);
   file.content = newValue;
   clampCommentsForActiveFile();
   refreshEditorDecorations();

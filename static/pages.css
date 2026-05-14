@@ -287,14 +287,15 @@ body {
 }
 
 .room-item-end {
-  flex-shrink: 0;
+  flex: 0 0 11.5rem;
   align-self: stretch;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--card-border);
   padding: 0;
-  min-width: 118px;
-  max-width: 42%;
+  width: 11.5rem;
+  min-width: 11.5rem;
+  max-width: 11.5rem;
 }
 
 .room-item-end .btn-room-side {
@@ -308,7 +309,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 14px;
+  padding: 12px 10px;
   box-sizing: border-box;
   background: transparent;
   color: var(--muted);
@@ -316,8 +317,7 @@ body {
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
   text-align: center;
   line-height: 1.25;
 }
@@ -610,7 +610,6 @@ body {
 }
 
 .comment-gutter-line {
-  min-height: 1.6em;
   box-sizing: border-box;
   border-left: 3px solid transparent;
 }

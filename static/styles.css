@@ -218,7 +218,7 @@ html, body {
 
 .line-numbers .line-num {
   display: block;
-  min-height: 1.6em;
+  box-sizing: border-box;
 }
 
 /* Поле ввода: вертикальная полоса прокрутки только справа у области кода */
@@ -319,4 +319,11 @@ html, body {
   white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-word;
+}
+
+/* Скрытый замер высоты логической строки (совпадает с переносами textarea) */
+.editor-line-height-probe {
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
