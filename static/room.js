@@ -1310,6 +1310,7 @@ function computeEnterIndentSuffix(value, cursorPos) {
     return m ? m[0] : '';
   }
 
+  let prevBased = '';
   let ls = lineStart;
   while (ls > 0) {
     const prevLineStart = value.lastIndexOf('\n', ls - 2) + 1;
@@ -1320,16 +1321,23 @@ function computeEnterIndentSuffix(value, cursorPos) {
       const afterLead = prevLine.slice(lead.length);
       const idx = afterLead.search(/[^\t ]/);
       if (idx === -1) {
-        return lead + afterLead;
+        prevBased = lead + afterLead;
+      } else {
+        prevBased = lead + afterLead.slice(0, idx);
       }
-      return lead + afterLead.slice(0, idx);
+      break;
     }
     if (prevLineStart === 0) {
-      return '';
+      break;
     }
     ls = prevLineStart;
   }
-  return '';
+
+  const curIndent = (curLineToCursor.match(/^[\t ]*/) || [''])[0];
+  if (curIndent.length > 0) {
+    return curIndent;
+  }
+  return prevBased;
 }
 
 textInput.addEventListener('keydown', (e) => {
