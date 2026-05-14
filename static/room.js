@@ -836,12 +836,22 @@ function updateHighlightPre(text) {
 }
 
 function refreshEditorDecorations() {
+  syncEditorOverlayToTextarea();
   const text = textInput.value;
   const heights = measureVisualLineHeights(text);
   rebuildLineNumbers(text, heights);
   rebuildCommentGutter(text, heights);
   updateHighlightPre(text);
   syncScrollAll();
+}
+
+/** Подгонка подложки подсветки под ширину текста textarea (полоса прокрутки не должна менять переносы). */
+function syncEditorOverlayToTextarea() {
+  const ta = textInput;
+  const pre = highlightPre;
+  if (!ta || !pre) return;
+  const scrollbarW = Math.max(0, ta.offsetWidth - ta.clientWidth);
+  pre.style.right = `${scrollbarW}px`;
 }
 
 function syncScrollAll() {
@@ -1280,24 +1290,46 @@ textInput.addEventListener('keyup', scheduleUpdateAddCommentButton);
 textInput.addEventListener('mouseup', scheduleUpdateAddCommentButton);
 
 function computeEnterIndentSuffix(value, cursorPos) {
-  const lineStart = value.lastIndexOf('\n', cursorPos - 1) + 1;
-  const curLineToCursor = value.slice(lineStart, cursorPos);
-  if (/^[\t ]*$/.test(curLineToCursor)) {
+  const pos = Math.max(0, Math.min(cursorPos, value.length));
+  const lineStart = value.lastIndexOf('\n', pos - 1) + 1;
+  const curLineToCursor = value.slice(lineStart, pos);
+  const curNorm = curLineToCursor.replace(/\r/g, '');
+
+  const ch = pos < value.length ? value[pos] : '';
+  const atLogicalLineEnd =
+    pos >= value.length ||
+    ch === '\n' ||
+    (ch === '\r' && (pos + 1 >= value.length || value[pos + 1] === '\n'));
+
+  if (/^[\t ]*$/.test(curNorm)) {
     return curLineToCursor;
   }
-  if (lineStart === 0) {
-    return '';
+
+  if (!atLogicalLineEnd) {
+    const m = curLineToCursor.match(/^[\t ]*/);
+    return m ? m[0] : '';
   }
-  const prevLineStart = value.lastIndexOf('\n', lineStart - 2) + 1;
-  const prevLine = value.slice(prevLineStart, lineStart - 1);
-  const m = prevLine.match(/^[\t ]*/);
-  const lead = m ? m[0] : '';
-  const afterLead = prevLine.slice(lead.length);
-  const idx = afterLead.search(/[^\t ]/);
-  if (idx === -1) {
-    return lead + afterLead;
+
+  let ls = lineStart;
+  while (ls > 0) {
+    const prevLineStart = value.lastIndexOf('\n', ls - 2) + 1;
+    const prevLine = value.slice(prevLineStart, ls - 1).replace(/\r/g, '');
+    if (prevLine.replace(/[\t ]/g, '').length > 0) {
+      const m = prevLine.match(/^[\t ]*/);
+      const lead = m ? m[0] : '';
+      const afterLead = prevLine.slice(lead.length);
+      const idx = afterLead.search(/[^\t ]/);
+      if (idx === -1) {
+        return lead + afterLead;
+      }
+      return lead + afterLead.slice(0, idx);
+    }
+    if (prevLineStart === 0) {
+      return '';
+    }
+    ls = prevLineStart;
   }
-  return lead + afterLead.slice(0, idx);
+  return '';
 }
 
 textInput.addEventListener('keydown', (e) => {

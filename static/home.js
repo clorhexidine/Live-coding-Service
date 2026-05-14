@@ -221,6 +221,10 @@ async function loadRooms() {
 
     const spine = document.createElement('div');
     spine.className = 'room-item-spine';
+    if (!isOwner) {
+      spine.classList.add('room-item-spine--placeholder');
+      spine.setAttribute('aria-hidden', 'true');
+    }
 
     if (isOwner) {
       const btnGear = document.createElement('button');
@@ -300,9 +304,7 @@ async function loadRooms() {
     }
 
     li.appendChild(main);
-    if (isOwner) {
-      li.appendChild(spine);
-    }
+    li.appendChild(spine);
     li.appendChild(end);
 
     li.addEventListener('click', (e) => {

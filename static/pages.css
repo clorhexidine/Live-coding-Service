@@ -286,16 +286,21 @@ body {
   color: var(--page-text);
 }
 
+/* Пустая колонка под ширину ⚙, чтобы у всех строк одинаковая сетка (владелец / гость). */
+.room-item-spine--placeholder {
+  pointer-events: none;
+}
+
 .room-item-end {
-  flex: 0 0 5.75rem;
+  flex: 0 0 7.25rem;
   align-self: stretch;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--card-border);
   padding: 0;
-  width: 5.75rem;
-  min-width: 5.75rem;
-  max-width: 5.75rem;
+  width: 7.25rem;
+  min-width: 7.25rem;
+  max-width: 7.25rem;
 }
 
 .room-item-end .btn-room-side {
@@ -650,6 +655,9 @@ body {
   white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-word;
+  overflow-wrap: break-word;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   color: transparent;
   background: transparent;
   pointer-events: none;

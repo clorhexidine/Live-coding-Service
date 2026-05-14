@@ -319,6 +319,9 @@ html, body {
   white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-word;
+  overflow-wrap: break-word;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* Скрытый замер высоты логической строки (совпадает с переносами textarea) */
