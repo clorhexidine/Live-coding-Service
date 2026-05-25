@@ -983,7 +983,25 @@ function showCodeTooltip(x, y, text) {
 }
 
 function offsetFromPointInTextarea(clientX, clientY) {
+  // Сначала пробуем нативный браузерный API для точного определения позиции
+  let nativeOffset = -1;
+  if (document.caretPositionFromPoint) {
+    const pos = document.caretPositionFromPoint(clientX, clientY);
+    if (pos && pos.offsetNode && pos.offsetNode.nodeType === Node.TEXT_NODE) {
+      // caretPositionFromPoint работает с DOM, а не с textarea — используем как подсказку
+      nativeOffset = pos.offset;
+    }
+  } else if (document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(clientX, clientY);
+    if (range && range.startContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+      nativeOffset = range.startOffset;
+    }
+  }
+
   const rect = textInput.getBoundingClientRect();
+  // Проверяем что курсор вообще над textarea
+  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return -1;
+
   const style = getComputedStyle(textInput);
   const lh = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.6;
   const padT = parseFloat(style.paddingTop) || 0;
@@ -997,11 +1015,47 @@ function offsetFromPointInTextarea(clientX, clientY) {
   if (lineIdx < 0 || lineIdx >= starts.length) return -1;
   const lineStart = starts[lineIdx];
   const lineEnd = lineIdx + 1 < starts.length ? starts[lineIdx + 1] - 1 : text.length;
-  const lineLen = lineEnd - lineStart + 1;
-  const fs = parseFloat(style.fontSize) || 14;
-  const cw = fs * 0.62;
-  const col = Math.max(0, Math.floor(x / cw));
-  return lineStart + Math.min(col, Math.max(0, lineLen - 1));
+
+  // Используем скрытый div-клон textarea для точного измерения позиции символа
+  const div = document.createElement('div');
+  const cs = style;
+  const measureProps = [
+    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
+    'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'boxSizing', 'whiteSpace', 'wordWrap', 'wordBreak', 'overflowWrap', 'tabSize',
+  ];
+  div.style.position = 'absolute';
+  div.style.visibility = 'hidden';
+  div.style.pointerEvents = 'none';
+  div.style.left = '-9999px';
+  div.style.top = '0';
+  div.style.width = `${textInput.clientWidth}px`;
+  div.style.whiteSpace = 'pre-wrap';
+  div.style.wordWrap = 'break-word';
+  div.style.wordBreak = 'break-word';
+  div.style.overflowWrap = 'break-word';
+  for (const p of measureProps) div.style[p] = cs[p];
+
+  // Вставляем текст строки и ищем ближайший символ по X
+  const lineText = text.slice(lineStart, lineEnd);
+  document.body.appendChild(div);
+
+  // Бинарный поиск: находим символ, левый край которого ближайший к x
+  let lo = 0;
+  let hi = lineText.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    div.textContent = lineText.slice(0, mid) || '\u200b';
+    const w = div.scrollWidth;
+    if (w <= x) lo = mid + 1;
+    else hi = mid;
+  }
+  document.body.removeChild(div);
+
+  // lo — индекс символа в строке, ближайший к позиции x
+  const col = Math.max(0, Math.min(lo, lineEnd - lineStart));
+  return lineStart + col;
 }
 
 function renderTabs({ renameFileId = null } = {}) {
