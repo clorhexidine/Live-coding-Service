@@ -5,6 +5,8 @@ const btnJoinByCode = document.getElementById('btn-join-by-code');
 const joinCodeHint = document.getElementById('join-code-hint');
 const createOverlay = document.getElementById('create-room-overlay');
 const joinPwOverlay = document.getElementById('home-join-pw-overlay');
+const joinCodeOverlay = document.getElementById('home-join-code-overlay');
+const btnOpenJoinCode = document.getElementById('btn-open-join-code');
 
 let currentUserId = null;
 /** @type {ReturnType<typeof createPinRow> | null} */
@@ -23,6 +25,17 @@ function showJoinHint(msg, isError) {
     joinCodeHost.classList.add('pin-row-host--shake');
     setTimeout(() => joinCodeHost.classList.remove('pin-row-host--shake'), 400);
   }
+}
+
+function openJoinCodeModal() {
+  if (joinCodePin) joinCodePin.clear();
+  if (joinCodeHint) { joinCodeHint.style.display = 'none'; joinCodeHint.textContent = ''; }
+  joinCodeOverlay.style.display = '';
+  if (joinCodePin) joinCodePin.focus();
+}
+
+function closeJoinCodeModal() {
+  joinCodeOverlay.style.display = 'none';
 }
 
 async function requireAuth() {
@@ -128,6 +141,7 @@ async function onJoinByCodeClick() {
     return;
   }
   const preview = await res.json();
+  closeJoinCodeModal();
   await tryJoinAfterPreview(preview, code);
 }
 
@@ -158,7 +172,8 @@ async function confirmAndLeaveRoom(roomId, displayTitle, li) {
   li.remove();
   if (roomList.children.length === 0) {
     loading.style.display = '';
-    loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
+    loading.className = 'empty-hint empty-hint--rooms';
+    loading.innerHTML = '<span>Нет активных комнат</span><span style="font-size:0.9rem;font-weight:400;">Нажмите «Создать комнату», чтобы начать</span>';
   }
 }
 
@@ -178,7 +193,8 @@ async function loadRooms() {
   roomList.innerHTML = '';
   if (rooms.length === 0) {
     loading.style.display = '';
-    loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
+    loading.className = 'empty-hint empty-hint--rooms';
+    loading.innerHTML = '<span>Нет активных комнат</span><span style="font-size:0.9rem;font-weight:400;">Нажмите «Создать комнату», чтобы начать</span>';
     return;
   }
   rooms.forEach((r) => {
@@ -241,7 +257,8 @@ async function loadRooms() {
             li.remove();
             if (roomList.children.length === 0) {
               loading.style.display = '';
-              loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
+              loading.className = 'empty-hint empty-hint--rooms';
+              loading.innerHTML = '<span>Нет активных комнат</span><span style="font-size:0.9rem;font-weight:400;">Нажмите «Создать комнату», чтобы начать</span>';
             }
           },
           onSaved: () => {
@@ -286,7 +303,8 @@ async function loadRooms() {
         li.remove();
         if (roomList.children.length === 0) {
           loading.style.display = '';
-          loading.textContent = 'Пока нет комнат. Нажмите «Создать комнату».';
+          loading.className = 'empty-hint empty-hint--rooms';
+          loading.innerHTML = '<span>Нет активных комнат</span><span style="font-size:0.9rem;font-weight:400;">Нажмите «Создать комнату», чтобы начать</span>';
         }
       });
       end.appendChild(btnDelete);
@@ -375,8 +393,20 @@ function bootKickedNotice() {
   bootKickedNotice();
   await loadRooms();
 
+  // Кнопка "Войти по коду" — открывает модальное окно
+  if (btnOpenJoinCode) {
+    btnOpenJoinCode.addEventListener('click', () => openJoinCodeModal());
+  }
+
+  // Кнопка "Войти в комнату" внутри модального окна кода
   btnJoinByCode.addEventListener('click', () => {
     onJoinByCodeClick();
+  });
+
+  // Закрытие модального окна кода
+  document.getElementById('btn-join-code-cancel').addEventListener('click', () => closeJoinCodeModal());
+  joinCodeOverlay.addEventListener('click', (e) => {
+    if (e.target === joinCodeOverlay) closeJoinCodeModal();
   });
 
   document.getElementById('btn-create').addEventListener('click', () => {

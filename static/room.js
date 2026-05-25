@@ -14,6 +14,7 @@ const roomTitleEl = document.getElementById('room-title');
 const roomDescEl = document.getElementById('room-description');
 const roomDescHint = document.getElementById('room-desc-hint');
 const btnAddComment = document.getElementById('btn-add-comment');
+const btnCommentSave = document.getElementById('btn-comment-save');
 const codeTooltip = document.getElementById('code-tooltip');
 const commentPopover = document.getElementById('comment-popover');
 const commentSnippet = document.getElementById('comment-snippet');
@@ -1507,6 +1508,12 @@ btnAddComment.addEventListener('mousemove', (e) => {
 });
 
 btnAddComment.addEventListener('mouseleave', hideCodeTooltip);
+
+if (btnCommentSave) {
+  btnCommentSave.addEventListener('click', () => {
+    commitCommentPopover();
+  });
+}
 
 commentBodyInput.addEventListener('input', () => {
   autoSizeCommentBody();

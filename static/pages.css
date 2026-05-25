@@ -50,6 +50,13 @@ body {
   color: var(--h1);
 }
 
+.auth-project-desc {
+  margin: 0 0 18px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .auth-card p.sub {
   margin: 0 0 20px;
   font-size: 0.875rem;
@@ -202,6 +209,10 @@ body {
 
 .dashboard-actions {
   margin-bottom: 20px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .btn-create {
@@ -218,6 +229,21 @@ body {
 
 .btn-create:hover {
   background: var(--create-room-bg-hover);
+}
+
+.btn-join-code {
+  padding: 10px 18px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--btn-bg);
+  color: var(--page-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-join-code:hover {
+  background: var(--btn-hover);
 }
 
 .room-list {
@@ -292,6 +318,8 @@ body {
 /* Пустая колонка под ширину ⚙, чтобы у всех строк одинаковая сетка (владелец / гость). */
 .room-item-spine--placeholder {
   pointer-events: none;
+  background: transparent;
+  border-left-color: transparent;
 }
 
 .room-item-end {
@@ -464,6 +492,20 @@ body {
   font-size: 0.9rem;
 }
 
+.empty-hint--rooms {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--muted);
+  gap: 8px;
+  padding: 40px 20px;
+}
+
 /* Верхняя панель комнаты */
 .room-topbar {
   display: flex;
@@ -552,7 +594,7 @@ body {
 }
 
 .room-desc-block {
-  padding: 0 12px 10px;
+  padding: 8px 12px 10px;
   border-top: 1px solid var(--tab-border);
 }
 
@@ -786,6 +828,18 @@ body {
   resize: none;
   overflow-y: auto;
   box-sizing: border-box;
+}
+
+.comment-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.comment-popover-save {
+  width: auto;
+  padding: 7px 18px;
+  font-size: 0.85rem;
 }
 
 .room-title-inline-host {

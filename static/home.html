@@ -14,17 +14,9 @@
       <button type="button" class="btn-logout" id="btn-logout">Выход</button>
     </header>
 
-    <div class="join-by-code-panel">
-      <div class="join-by-code-inner">
-        <span class="join-by-code-label">Вход по коду</span>
-        <div id="home-join-code-pin" class="pin-row-host" aria-label="Код приглашения"></div>
-        <button type="button" class="btn-primary join-by-code-btn" id="btn-join-by-code">Войти в комнату</button>
-        <p class="field-hint" id="join-code-hint" style="display:none"></p>
-      </div>
-    </div>
-
     <div class="dashboard-actions">
       <button type="button" class="btn-create" id="btn-create">Создать комнату</button>
+      <button type="button" class="btn-join-code" id="btn-open-join-code">Войти по коду</button>
     </div>
     <p class="empty-hint" id="loading">Загрузка…</p>
     <ul class="room-list" id="room-list" style="display:none"></ul>
@@ -58,6 +50,19 @@
       <div class="room-settings-actions room-settings-actions--row">
         <button type="button" class="app-modal-btn app-modal-btn--secondary" id="home-join-pw-cancel">Отмена</button>
         <button type="button" class="btn-primary" id="home-join-pw-submit">Войти</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="home-join-code-overlay" class="room-settings-overlay" style="display:none">
+    <div class="room-settings-dialog room-settings-dialog--narrow" role="dialog" aria-modal="true" aria-labelledby="join-code-title">
+      <h2 class="room-settings-h2" id="join-code-title">Войти по коду</h2>
+      <p class="room-settings-sub">Введите 6-символьный код комнаты.</p>
+      <div id="home-join-code-pin" class="pin-row-host" aria-label="Код приглашения"></div>
+      <p class="field-hint field-hint--error" id="join-code-hint" style="display:none"></p>
+      <div class="room-settings-actions room-settings-actions--row">
+        <button type="button" class="app-modal-btn app-modal-btn--secondary" id="btn-join-code-cancel">Отмена</button>
+        <button type="button" class="btn-primary" id="btn-join-by-code">Войти в комнату</button>
       </div>
     </div>
   </div>
