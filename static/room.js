@@ -262,11 +262,6 @@ function getCommentAtOffset(off) {
   return hits.reduce((a, b) => (b.end - b.start < a.end - a.start ? b : a));
 }
 
-function getCommentsAtOffset(off) {
-  const fid = activeFileId;
-  return comments.filter((c) => c.file_id === fid && off >= c.start && off < c.end);
-}
-
 function setHotCommentSpan(commentId) {
   highlightPre.querySelectorAll('.hl-comment.hl-comment--hot').forEach((el) => {
     el.classList.remove('hl-comment--hot');
@@ -988,37 +983,40 @@ function showCodeTooltip(x, y, text) {
 }
 
 function offsetFromPointInTextarea(clientX, clientY) {
-  // Используем highlightPre (абсолютно позиционирован поверх textarea, те же переносы)
-  // через нативный API браузера для точного определения символьного offset.
-  const pre = highlightPre;
   const text = textInput.value;
+  if (!text) return -1;
 
-  // Попытка через caretPositionFromPoint (Firefox) или caretRangeFromPoint (Chrome/Safari)
+  // Используем нативный API определения позиции каретки по координатам.
+  // highlightPre — точное зеркало textarea (те же шрифт, перенос, отступы).
+  // Временно включаем pointer-events чтобы caretRangeFromPoint мог найти его узлы.
   let charOffset = -1;
-
-  // highlightPre имеет pointer-events:none — временно включаем для caret API
-  const prevPE = pre.style.pointerEvents;
-  pre.style.pointerEvents = 'auto';
+  const prevPE = highlightPre.style.pointerEvents;
+  const prevTA = textInput.style.pointerEvents;
+  highlightPre.style.pointerEvents = 'auto';
+  textInput.style.pointerEvents = 'none';
 
   try {
-    if (document.caretPositionFromPoint) {
-      const pos = document.caretPositionFromPoint(clientX, clientY);
-      if (pos && pos.offsetNode) {
-        charOffset = resolveOffsetInPre(pre, pos.offsetNode, pos.offset, text);
-      }
-    } else if (document.caretRangeFromPoint) {
+    if (document.caretRangeFromPoint) {
+      // Chrome / Safari / Edge
       const range = document.caretRangeFromPoint(clientX, clientY);
-      if (range) {
-        charOffset = resolveOffsetInPre(pre, range.startContainer, range.startOffset, text);
+      if (range && range.startContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+        charOffset = resolveOffsetInPre(range.startContainer, range.startOffset);
+      }
+    } else if (document.caretPositionFromPoint) {
+      // Firefox
+      const pos = document.caretPositionFromPoint(clientX, clientY);
+      if (pos && pos.offsetNode && pos.offsetNode.nodeType === Node.TEXT_NODE) {
+        charOffset = resolveOffsetInPre(pos.offsetNode, pos.offset);
       }
     }
   } finally {
-    pre.style.pointerEvents = prevPE;
+    highlightPre.style.pointerEvents = prevPE;
+    textInput.style.pointerEvents = prevTA;
   }
 
   if (charOffset >= 0) return charOffset;
 
-  // Fallback: грубое приближение по строке/колонке
+  // Запасной вариант: старый метод через ширину символа
   const rect = textInput.getBoundingClientRect();
   const style = getComputedStyle(textInput);
   const lh = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.6;
@@ -1040,40 +1038,31 @@ function offsetFromPointInTextarea(clientX, clientY) {
 }
 
 /**
- * Переводит позицию DOM-узла внутри highlightPre в символьный offset в тексте textarea.
- * Один проход по всем текстовым узлам pre; для span.hl-comment используем data-start/data-end.
+ * Вычисляет абсолютный offset в тексте textarea по текстовому узлу и позиции
+ * внутри highlightPre (зеркало textarea).
  */
-function resolveOffsetInPre(pre, node, domOffset, text) {
-  const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT, null);
-  let cursor = 0;
-
-  let n = walker.nextNode();
-  while (n) {
-    const parent = n.parentElement;
-    const inSpan = parent && parent.classList && parent.classList.contains('hl-comment');
-
-    if (inSpan) {
-      const spanStart = parseInt(parent.dataset.start, 10);
-      const spanEnd = parseInt(parent.dataset.end, 10);
-      if (!isNaN(spanStart) && !isNaN(spanEnd)) {
-        if (n === node) {
-          return Math.max(0, Math.min(spanStart + domOffset, spanEnd));
-        }
-        cursor = spanEnd;
-        n = walker.nextNode();
-        continue;
-      }
+function resolveOffsetInPre(textNode, offsetInNode) {
+  // Обходим все текстовые узлы highlightPre в порядке документа,
+  // суммируем длины до нужного узла.
+  let total = 0;
+  const walker = document.createTreeWalker(highlightPre, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node === textNode) {
+      return total + offsetInNode;
     }
-
-    // Текстовый узел вне span
-    if (n === node) {
-      const result = cursor + Math.min(domOffset, n.textContent.length);
-      return Math.max(0, Math.min(result, text.length));
+    // highlightPre содержит \u00a0 как заглушку для пустого текста — не считаем его
+    const val = node.nodeValue || '';
+    // Длина текстового содержимого узла в терминах исходного текста:
+    // span.hl-comment содержит фрагмент оригинального текста (escapeHtml раскодируется браузером),
+    // текстовые узлы вне span тоже содержат оригинальный текст.
+    // Единственное исключение — заглушка '\u00a0' когда текст пустой.
+    if (val === '\u00a0' && highlightPre.textContent.trim() === '\u00a0') {
+      total += 0;
+    } else {
+      total += val.length;
     }
-    cursor += n.textContent.length;
-    n = walker.nextNode();
   }
-
   return -1;
 }
 
@@ -1435,14 +1424,10 @@ textInput.addEventListener('mousemove', (e) => {
     setHotCommentSpan(null);
     return;
   }
-  const hits = getCommentsAtOffset(off);
-  if (hits.length) {
-    // Показываем все комментарии в точке, разделённые разделителем
-    const tooltipText = hits.map((c) => c.body || '').filter(Boolean).join('\n\n───\n\n');
-    showCodeTooltip(e.clientX, e.clientY, tooltipText || hits[0].body || '');
-    // Подсвечиваем самый короткий (наиболее точный) комментарий
-    const shortest = hits.reduce((a, b) => (b.end - b.start < a.end - a.start ? b : a));
-    setHotCommentSpan(shortest.id);
+  const hit = getCommentAtOffset(off);
+  if (hit) {
+    showCodeTooltip(e.clientX, e.clientY, hit.body || '');
+    setHotCommentSpan(hit.id);
   } else {
     hideCodeTooltip();
     setHotCommentSpan(null);
