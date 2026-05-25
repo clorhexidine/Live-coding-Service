@@ -111,6 +111,8 @@ def _room_to_out(db: Session, room: Room, viewer: User | None = None) -> RoomOut
         .scalars()
         .all()
     )
+    # is_owner вычисляется только для прямых запросов конкретного пользователя.
+    # При WS-бродкасте viewer=None, чтобы не рассылать чужой is_owner всем участникам.
     is_owner = viewer is not None and viewer.id == room.owner_id
     has_pw = bool(room.room_password_hash)
     return RoomOut(
@@ -442,7 +444,7 @@ def save_room_state(
 ):
     room = _get_room_or_403(db, user, room_id)
     _apply_room_state_to_db(db, room, body)
-    out = _room_to_out(db, room, user)
+    out = _room_to_out(db, room, None)   # is_owner вычисляется на клиенте по owner_id
     seq = hub.next_seq(room_id)
     payload = {
         "type": "state",
@@ -667,7 +669,7 @@ async def room_websocket(websocket: WebSocket, room_id: int):
                     await websocket.send_json({"type": "access_lost"})
                     break
                 _apply_room_state_to_db(db, room_inst, body)
-                out = _room_to_out(db, room_inst, user)
+                out = _room_to_out(db, room_inst, None)  # is_owner вычисляется на клиенте
             except HTTPException as he:
                 db.rollback()
                 await websocket.send_json({"type": "error", "detail": str(he.detail)})

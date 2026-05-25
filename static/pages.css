@@ -1177,9 +1177,7 @@ body.app-modal-open {
 }
 
 .room-download-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;  /* координаты выставляются через JS при открытии */
   z-index: 10015;
   display: none;
   flex-direction: column;

@@ -466,15 +466,17 @@ function applyRoomData(data, opts) {
   roomTitleEl.textContent = data.title || `Комната #${data.id}`;
   document.title = `${roomTitleEl.textContent} — Live coding`;
   roomOwnerId = data.owner_id;
+
+  // is_owner вычисляем локально — data.is_owner из бродкаста содержит значение отправителя
+  const isOwner = currentUserId != null && roomOwnerId === currentUserId;
+
   if (btnRoomSettings) {
-    const showGear = !!data.is_owner;
-    btnRoomSettings.hidden = !showGear;
-    btnRoomSettings.style.display = showGear ? 'inline-flex' : 'none';
+    btnRoomSettings.hidden = !isOwner;
+    btnRoomSettings.style.display = isOwner ? 'inline-flex' : 'none';
   }
   if (btnRoomLeave) {
-    const showLeave = !data.is_owner;
-    btnRoomLeave.hidden = !showLeave;
-    btnRoomLeave.style.display = showLeave ? 'inline-flex' : 'none';
+    btnRoomLeave.hidden = isOwner;
+    btnRoomLeave.style.display = isOwner ? 'none' : 'inline-flex';
   }
   // Не перезаписывать описание пока пользователь его редактирует
   if (!descFocused) {
@@ -759,11 +761,11 @@ function renderRemoteCursor(tab_id) {
   const cs = getComputedStyle(textInput);
   const brdL = parseFloat(cs.borderLeftWidth) || 0;
   const brdT = parseFloat(cs.borderTopWidth) || 0;
-  const padL = parseFloat(cs.paddingLeft) || 0;
-  const padT = parseFloat(cs.paddingTop) || 0;
 
-  const absLeft = rect.left + brdL + padL + left - textInput.scrollLeft;
-  const absTop  = rect.top  + brdT + padT + top  - textInput.scrollTop;
+  // measureOffsetInTextarea уже учитывает padding внутри div-зеркала,
+  // поэтому добавляем только border, но не padding повторно
+  const absLeft = rect.left + brdL + left - textInput.scrollLeft;
+  const absTop  = rect.top  + brdT + top  - textInput.scrollTop;
 
   // Проверяем что курсор в видимой области
   const inView = absTop >= rect.top && absTop <= rect.bottom;
@@ -972,8 +974,34 @@ function closeRoomDownloadMenu() {
 }
 
 function openRoomDownloadMenu() {
-  if (roomDownloadMenu) roomDownloadMenu.classList.add('room-download-menu--open');
-  if (btnRoomDownload) btnRoomDownload.setAttribute('aria-expanded', 'true');
+  if (!roomDownloadMenu || !btnRoomDownload) return;
+  roomDownloadMenu.classList.add('room-download-menu--open');
+  btnRoomDownload.setAttribute('aria-expanded', 'true');
+
+  // Позиционируем меню через fixed, чтобы не выходило за края экрана на мобильном
+  const btnRect = btnRoomDownload.getBoundingClientRect();
+  const menuW = roomDownloadMenu.offsetWidth || 220;
+  const menuH = roomDownloadMenu.offsetHeight || 100;
+  const margin = 6;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // Предпочитаем выравнивание по правому краю кнопки
+  let left = btnRect.right - menuW;
+  // Не выходим за левый край
+  if (left < margin) left = margin;
+  // Не выходим за правый край
+  if (left + menuW > vw - margin) left = vw - menuW - margin;
+
+  // Открываем вниз, если не хватает места — вверх
+  let top = btnRect.bottom + margin;
+  if (top + menuH > vh - margin) top = btnRect.top - menuH - margin;
+  if (top < margin) top = margin;
+
+  roomDownloadMenu.style.position = 'fixed';
+  roomDownloadMenu.style.left = `${left}px`;
+  roomDownloadMenu.style.top = `${top}px`;
+  roomDownloadMenu.style.right = 'auto';
 }
 
 function toggleRoomDownloadMenu(e) {
