@@ -636,7 +636,10 @@ function handleWsMessage(ev) {
   if (seq > 0 && seq <= lastRemoteSeq) return;
   if (seq > lastRemoteSeq) lastRemoteSeq = seq;
   if (!msg.room) return;
-  if (isCommentPopoverOpen()) commitCommentPopover();
+
+  // Не закрываем popover комментария при получении чужого state —
+  // пользователь может быть в процессе написания комментария.
+  // Popover закрываем только если пришёл state от нас самих (уже отфильтровано выше).
 
   // Сохраняем позицию курсора и скролл перед применением state
   const savedSel = textInput === document.activeElement
@@ -898,20 +901,42 @@ function saveState() {
  * Вызывается немедленно при каждом изменении текста.
  */
 function pushOp(fileId, oldText, newText) {
-  if (!roomSocket || roomSocket.readyState !== WebSocket.OPEN) return;
   const b = editRegionBounds(oldText, newText);
   if (!b) return;
   const { o0, o1, n0, n1 } = b;
+  const opPos    = o0;
+  const opRemove = o1 - o0;
+  const opInsert = newText.slice(n0, n1);
+
+  // Сдвигаем курсоры других пользователей относительно нашей локальной правки
+  shiftRemoteCursorsForLocalOp(fileId, opPos, opRemove, opInsert.length);
+
+  if (!roomSocket || roomSocket.readyState !== WebSocket.OPEN) return;
   try {
     roomSocket.send(JSON.stringify({
       type: 'op',
       tab_id: CLIENT_TAB_ID,
       file_id: fileId,
-      pos: o0,
-      remove: o1 - o0,
-      insert: newText.slice(n0, n1),
+      pos: opPos,
+      remove: opRemove,
+      insert: opInsert,
     }));
   } catch (_) { /* */ }
+}
+
+/**
+ * Сдвигает сохранённые позиции курсоров других пользователей
+ * при локальной правке текущего пользователя.
+ * Это нужно чтобы курсоры не «прыгали» пока мы печатаем.
+ */
+function shiftRemoteCursorsForLocalOp(fileId, opPos, opRemove, insertLen) {
+  for (const tid of Object.keys(remoteCursors)) {
+    const rc = remoteCursors[tid];
+    if (rc.file_id !== fileId) continue;
+    rc.pos = transformCursorPos(rc.pos, opPos, opRemove, insertLen);
+    // Не перерисовываем сразу — курсор обновится при следующем cursor-сообщении
+    // или при следующем renderAllRemoteCursors. Это избегает лишних reflow.
+  }
 }
 
 function scheduleDescriptionSave() {
