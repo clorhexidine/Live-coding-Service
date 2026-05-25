@@ -593,6 +593,58 @@ async def room_websocket(websocket: WebSocket, room_id: int):
             if t == "ping":
                 await websocket.send_json({"type": "pong"})
                 continue
+
+            # Операция редактирования: ретранслируем всем остальным без сохранения в БД.
+            # Персистентность обеспечивается отдельным state-сообщением с дебаунсом.
+            if t == "op":
+                tab_id = str(raw.get("tab_id") or "")[:80]
+                websocket.state.tab_id = tab_id  # запоминаем для cursor_leave
+                file_id = str(raw.get("file_id") or "")[:64]
+                pos = raw.get("pos")
+                remove = raw.get("remove")
+                insert = raw.get("insert")
+                # Базовая валидация
+                if (
+                    file_id
+                    and isinstance(pos, int) and pos >= 0
+                    and isinstance(remove, int) and remove >= 0
+                    and isinstance(insert, str) and len(insert) <= 200000
+                ):
+                    await hub.broadcast_json_except(
+                        room_id,
+                        {
+                            "type": "op",
+                            "tab_id": tab_id,
+                            "file_id": file_id,
+                            "pos": pos,
+                            "remove": remove,
+                            "insert": insert,
+                        },
+                        websocket,
+                    )
+                continue
+
+            # Позиция курсора: ретранслируем всем остальным без сохранения.
+            if t == "cursor":
+                tab_id = str(raw.get("tab_id") or "")[:80]
+                websocket.state.tab_id = tab_id  # запоминаем для cursor_leave
+                file_id = str(raw.get("file_id") or "")[:64]
+                pos = raw.get("pos")
+                username = str(raw.get("username") or "")[:64]
+                if file_id and isinstance(pos, int) and pos >= 0:
+                    await hub.broadcast_json_except(
+                        room_id,
+                        {
+                            "type": "cursor",
+                            "tab_id": tab_id,
+                            "file_id": file_id,
+                            "pos": pos,
+                            "username": username,
+                        },
+                        websocket,
+                    )
+                continue
+
             if t != "state":
                 continue
             tab_id = str(raw.get("tab_id") or "")[:80]
@@ -636,4 +688,10 @@ async def room_websocket(websocket: WebSocket, room_id: int):
     except WebSocketDisconnect:
         pass
     finally:
+        # Уведомляем остальных что пользователь отключился — убираем его курсор
+        await hub.broadcast_json_except(
+            room_id,
+            {"type": "cursor_leave", "tab_id": getattr(websocket.state, "tab_id", "")},
+            websocket,
+        )
         await hub.remove(room_id, websocket)

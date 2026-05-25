@@ -330,3 +330,50 @@ html, body {
   padding: 0;
   border: 0;
 }
+
+/* ── Курсоры других пользователей ─────────────────────────────────────────── */
+.remote-cursor {
+  position: fixed;
+  z-index: 9990;
+  pointer-events: none;
+  width: 2px;
+  background: var(--rc-color, #4af);
+  border-radius: 1px;
+}
+
+.remote-cursor__line {
+  position: absolute;
+  inset: 0;
+  background: var(--rc-color, #4af);
+  border-radius: 1px;
+  animation: remote-cursor-blink 1.1s step-end infinite;
+}
+
+@keyframes remote-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.25; }
+}
+
+.remote-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 1px 5px 2px;
+  border-radius: 3px 3px 3px 0;
+  background: var(--rc-color, #4af);
+  color: #fff;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.remote-cursor:hover .remote-cursor__label,
+.remote-cursor--show-label .remote-cursor__label {
+  opacity: 1;
+}

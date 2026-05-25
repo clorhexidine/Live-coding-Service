@@ -45,7 +45,19 @@ let roomSocket = null;
 let wsReconnectTimer = null;
 let wsOpen = false;
 let lastRemoteSeq = 0;
-const WS_SYNC_DEBOUNCE_MS = 40;
+const WS_SYNC_DEBOUNCE_MS = 400;   // дебаунс для full-state (персистентность)
+const WS_OP_DEBOUNCE_MS   = 0;     // op-сообщения уходят сразу
+
+// ── Имя текущего пользователя (для отображения курсора) ──────────────────────
+let currentUsername = '';
+
+// ── Курсоры других пользователей ─────────────────────────────────────────────
+// { tabId → { file_id, pos, username, el } }
+const remoteCursors = {};
+let cursorSendTimer = null;
+
+// ── Флаги «поле в фокусе» — не перезаписывать при remote state ───────────────
+let descFocused = false;
 
 const MAX_FILES = 20;
 const EDITOR_INDENT = '    ';
@@ -464,14 +476,17 @@ function applyRoomData(data, opts) {
     btnRoomLeave.hidden = !showLeave;
     btnRoomLeave.style.display = showLeave ? 'inline-flex' : 'none';
   }
-  roomDescEl.value = data.description || '';
+  // Не перезаписывать описание пока пользователь его редактирует
+  if (!descFocused) {
+    roomDescEl.value = data.description || '';
+    requestAnimationFrame(() => autoSizeRoomDesc());
+  }
   const canEditDesc = currentUserId != null && roomOwnerId === currentUserId;
   roomDescEl.disabled = !canEditDesc;
   roomDescHint.textContent = canEditDesc
     ? 'Описание сохраняется автоматически при паузе в наборе.'
     : 'Только владелец комнаты может менять описание.';
   applyRoomTitleEditable();
-  requestAnimationFrame(() => autoSizeRoomDesc());
 
   const nextFiles = (data.files || []).map((f) => ({
     id: f.id,
@@ -594,6 +609,25 @@ function handleWsMessage(ev) {
     applyRoomMetaFromWs(msg);
     return;
   }
+
+  // ── Операция редактирования от другого пользователя ──────────────────────
+  if (msg.type === 'op') {
+    applyRemoteOp(msg);
+    return;
+  }
+
+  // ── Курсор другого пользователя ──────────────────────────────────────────
+  if (msg.type === 'cursor') {
+    applyRemoteCursor(msg);
+    return;
+  }
+
+  // ── Пользователь отключился — убираем его курсор ─────────────────────────
+  if (msg.type === 'cursor_leave') {
+    if (msg.tab_id) removeRemoteCursor(msg.tab_id);
+    return;
+  }
+
   if (msg.type !== 'state') return;
   if (msg.sender_tab_id && msg.sender_tab_id === CLIENT_TAB_ID) return;
   const seq = msg.seq || 0;
@@ -601,9 +635,17 @@ function handleWsMessage(ev) {
   if (seq > lastRemoteSeq) lastRemoteSeq = seq;
   if (!msg.room) return;
   if (isCommentPopoverOpen()) commitCommentPopover();
+
+  // Сохраняем позицию курсора и скролл перед применением state
+  const savedSel = textInput === document.activeElement
+    ? { start: textInput.selectionStart, end: textInput.selectionEnd, top: textInput.scrollTop }
+    : null;
+
   applyRoomData(msg.room, { initialLoad: false });
   renderTabs();
-  applyActiveFileContent();
+
+  // Применяем контент активного файла без сброса курсора
+  applyActiveFileContentFromRemote(savedSel);
   refreshEditorDecorations();
   updateAddCommentButtonState();
 }
@@ -614,10 +656,187 @@ function applyRoomMetaFromWs(msg) {
     roomTitleEl.textContent = t;
     document.title = `${t} — Live coding`;
   }
-  if (msg.description !== undefined && roomDescEl) {
+  if (msg.description !== undefined && roomDescEl && !descFocused) {
     roomDescEl.value = msg.description || '';
     requestAnimationFrame(() => autoSizeRoomDesc());
   }
+}
+
+// ── Применение удалённой операции редактирования ─────────────────────────────
+function applyRemoteOp(msg) {
+  const { tab_id, file_id, pos, remove, insert } = msg;
+  if (!file_id || typeof pos !== 'number' || typeof remove !== 'number' || typeof insert !== 'string') return;
+
+  // Применяем к файлу в памяти
+  const file = files.find((f) => f.id === file_id);
+  if (!file) return;
+
+  const oldText = file.content || '';
+  const safePos = Math.max(0, Math.min(pos, oldText.length));
+  const safeEnd = Math.max(safePos, Math.min(safePos + remove, oldText.length));
+  const newText = oldText.slice(0, safePos) + insert + oldText.slice(safeEnd);
+  file.content = newText;
+
+  // Сдвигаем комментарии
+  syncCommentsToTextChange(file_id, oldText, newText);
+
+  // Если это активный файл — применяем к textarea без сброса курсора
+  if (file_id === activeFileId) {
+    const isActive = textInput === document.activeElement;
+    const curSel = isActive ? textInput.selectionStart : null;
+    const curSelEnd = isActive ? textInput.selectionEnd : null;
+    const curScroll = textInput.scrollTop;
+
+    textInput.value = newText;
+
+    // Трансформируем позицию курсора относительно операции
+    if (isActive && curSel !== null) {
+      const newCurSel = transformCursorPos(curSel, safePos, remove, insert.length);
+      const newCurSelEnd = transformCursorPos(curSelEnd, safePos, remove, insert.length);
+      textInput.setSelectionRange(newCurSel, newCurSelEnd);
+    }
+    textInput.scrollTop = curScroll;
+    refreshEditorDecorations();
+    updateAddCommentButtonState();
+  }
+
+  // Сдвигаем курсоры других пользователей
+  for (const tid of Object.keys(remoteCursors)) {
+    const rc = remoteCursors[tid];
+    if (rc.file_id === file_id) {
+      rc.pos = transformCursorPos(rc.pos, safePos, remove, insert.length);
+      renderRemoteCursor(tid);
+    }
+  }
+}
+
+/**
+ * Трансформирует позицию курсора при операции замены [opPos, opPos+opRemove) → insert.
+ */
+function transformCursorPos(curPos, opPos, opRemove, insertLen) {
+  if (curPos <= opPos) return curPos;
+  if (curPos < opPos + opRemove) return opPos + insertLen;
+  return curPos - opRemove + insertLen;
+}
+
+// ── Курсоры других пользователей ─────────────────────────────────────────────
+function applyRemoteCursor(msg) {
+  const { tab_id, file_id, pos, username } = msg;
+  if (!tab_id || !file_id || typeof pos !== 'number') return;
+
+  if (!remoteCursors[tab_id]) {
+    remoteCursors[tab_id] = { file_id, pos, username: username || '?', el: null };
+  } else {
+    remoteCursors[tab_id].file_id = file_id;
+    remoteCursors[tab_id].pos = pos;
+    remoteCursors[tab_id].username = username || remoteCursors[tab_id].username;
+  }
+  renderRemoteCursor(tab_id);
+}
+
+function removeRemoteCursor(tab_id) {
+  const rc = remoteCursors[tab_id];
+  if (rc && rc.el) {
+    rc.el.remove();
+    rc.el = null;
+  }
+  delete remoteCursors[tab_id];
+}
+
+function renderRemoteCursor(tab_id) {
+  const rc = remoteCursors[tab_id];
+  if (!rc) return;
+
+  // Показываем только если курсор в активном файле
+  if (rc.file_id !== activeFileId) {
+    if (rc.el) { rc.el.style.display = 'none'; }
+    return;
+  }
+
+  const pos = rc.pos;
+  const { top, left, height } = measureOffsetInTextarea(textInput, pos);
+  const rect = textInput.getBoundingClientRect();
+  const cs = getComputedStyle(textInput);
+  const brdL = parseFloat(cs.borderLeftWidth) || 0;
+  const brdT = parseFloat(cs.borderTopWidth) || 0;
+  const padL = parseFloat(cs.paddingLeft) || 0;
+  const padT = parseFloat(cs.paddingTop) || 0;
+
+  const absLeft = rect.left + brdL + padL + left - textInput.scrollLeft;
+  const absTop  = rect.top  + brdT + padT + top  - textInput.scrollTop;
+
+  // Проверяем что курсор в видимой области
+  const inView = absTop >= rect.top && absTop <= rect.bottom;
+
+  if (!rc.el) {
+    rc.el = document.createElement('div');
+    rc.el.className = 'remote-cursor';
+    rc.el.setAttribute('aria-hidden', 'true');
+
+    const line = document.createElement('div');
+    line.className = 'remote-cursor__line';
+    rc.el.appendChild(line);
+
+    const label = document.createElement('div');
+    label.className = 'remote-cursor__label';
+    label.textContent = rc.username;
+    rc.el.appendChild(label);
+
+    document.body.appendChild(rc.el);
+  }
+
+  // Назначаем цвет по хэшу tab_id
+  const color = tabIdToColor(tab_id);
+  rc.el.style.setProperty('--rc-color', color);
+  rc.el.style.left = `${absLeft}px`;
+  rc.el.style.top  = `${absTop}px`;
+  rc.el.style.height = `${height}px`;
+  rc.el.style.display = inView ? 'block' : 'none';
+
+  // Показываем лейбл на 2 секунды при каждом обновлении позиции
+  rc.el.classList.add('remote-cursor--show-label');
+  if (rc._labelTimer) clearTimeout(rc._labelTimer);
+  rc._labelTimer = setTimeout(() => {
+    if (rc.el) rc.el.classList.remove('remote-cursor--show-label');
+  }, 2000);
+}
+
+function renderAllRemoteCursors() {
+  for (const tid of Object.keys(remoteCursors)) {
+    renderRemoteCursor(tid);
+  }
+}
+
+/** Детерминированный цвет по строке tab_id */
+function tabIdToColor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
+  const hue = Math.abs(h) % 360;
+  return `hsl(${hue}, 70%, 55%)`;
+}
+
+/** Отправить позицию курсора другим участникам */
+function sendCursorPosition() {
+  if (!roomSocket || roomSocket.readyState !== WebSocket.OPEN) return;
+  const file = getActiveFile();
+  if (!file) return;
+  try {
+    roomSocket.send(JSON.stringify({
+      type: 'cursor',
+      tab_id: CLIENT_TAB_ID,
+      file_id: activeFileId,
+      pos: textInput.selectionStart,
+      username: currentUsername,
+    }));
+  } catch (_) { /* */ }
+}
+
+function scheduleCursorSend() {
+  if (cursorSendTimer) return;
+  cursorSendTimer = setTimeout(() => {
+    cursorSendTimer = null;
+    sendCursorPosition();
+  }, 50);
 }
 
 function scheduleWsReconnect() {
@@ -670,6 +889,27 @@ function saveState() {
     if (file) file.content = textInput.value;
     pushStateToServer(buildStatePayload());
   }, WS_SYNC_DEBOUNCE_MS);
+}
+
+/**
+ * Отправляет op-сообщение (операцию редактирования) другим участникам.
+ * Вызывается немедленно при каждом изменении текста.
+ */
+function pushOp(fileId, oldText, newText) {
+  if (!roomSocket || roomSocket.readyState !== WebSocket.OPEN) return;
+  const b = editRegionBounds(oldText, newText);
+  if (!b) return;
+  const { o0, o1, n0, n1 } = b;
+  try {
+    roomSocket.send(JSON.stringify({
+      type: 'op',
+      tab_id: CLIENT_TAB_ID,
+      file_id: fileId,
+      pos: o0,
+      remove: o1 - o0,
+      insert: newText.slice(n0, n1),
+    }));
+  } catch (_) { /* */ }
 }
 
 function scheduleDescriptionSave() {
@@ -1067,6 +1307,11 @@ function resolveOffsetInPre(textNode, offsetInNode) {
 }
 
 function renderTabs({ renameFileId = null } = {}) {
+  // Если сейчас идёт переименование файла — не перерисовываем вкладки
+  // чтобы не уничтожить input в фокусе
+  if (!renameFileId && document.activeElement && document.activeElement.classList.contains('tab-rename-input')) {
+    return;
+  }
   tabsContainer.innerHTML = '';
 
   files.forEach((file, index) => {
@@ -1091,6 +1336,7 @@ function renderTabs({ renameFileId = null } = {}) {
       applyActiveFileContent();
       renderTabs();
       saveState();
+      renderAllRemoteCursors();
     });
 
     tabsContainer.appendChild(tab);
@@ -1108,6 +1354,36 @@ function applyActiveFileContent() {
   textInput.value = file.content || '';
   textInput.scrollTop = 0;
   textInput.scrollLeft = 0;
+  refreshEditorDecorations();
+  scheduleUpdateAddCommentButton();
+}
+
+/** Применяет контент активного файла из remote state, сохраняя курсор если возможно. */
+function applyActiveFileContentFromRemote(savedSel) {
+  const file = getActiveFile();
+  const newContent = file.content || '';
+
+  if (textInput.value === newContent) {
+    // Контент не изменился — ничего не делаем
+    return;
+  }
+
+  const isActive = textInput === document.activeElement;
+  const scrollTop = textInput.scrollTop;
+
+  textInput.value = newContent;
+
+  if (isActive && savedSel) {
+    // Клампируем позицию к новой длине
+    const len = newContent.length;
+    const s = Math.min(savedSel.start, len);
+    const e = Math.min(savedSel.end, len);
+    textInput.setSelectionRange(s, e);
+    textInput.scrollTop = savedSel.top;
+  } else {
+    textInput.scrollTop = scrollTop;
+  }
+
   refreshEditorDecorations();
   scheduleUpdateAddCommentButton();
 }
@@ -1388,32 +1664,37 @@ window.addEventListener('resize', () => {
   if (isCommentPopoverOpen()) {
     positionCommentPopover(commentPopoverAnchorStart, commentPopoverAnchorEnd);
   }
-  requestAnimationFrame(() => refreshEditorDecorations());
+  requestAnimationFrame(() => {
+    refreshEditorDecorations();
+    renderAllRemoteCursors();
+  });
 });
 
 textInput.addEventListener('input', () => {
   const file = getActiveFile();
   const oldText = file.content;
   const newText = textInput.value;
+  pushOp(activeFileId, oldText, newText);
   syncCommentsToTextChange(activeFileId, oldText, newText);
   file.content = newText;
   clampCommentsForActiveFile();
   refreshEditorDecorations();
   saveState();
+  scheduleCursorSend();
 });
-
-textInput.addEventListener('scroll', syncScrollAll);
 
 textInput.addEventListener('paste', () => {
   setTimeout(() => {
     const file = getActiveFile();
     const oldText = file.content;
     const newText = textInput.value;
+    pushOp(activeFileId, oldText, newText);
     syncCommentsToTextChange(activeFileId, oldText, newText);
     file.content = newText;
     clampCommentsForActiveFile();
     refreshEditorDecorations();
     saveState();
+    scheduleCursorSend();
   }, 0);
 });
 
@@ -1449,10 +1730,14 @@ textInput.addEventListener('contextmenu', (e) => {
   openCommentCtxMenu(e.clientX, e.clientY, c.id);
 });
 
-textInput.addEventListener('select', scheduleUpdateAddCommentButton);
-textInput.addEventListener('keyup', scheduleUpdateAddCommentButton);
-textInput.addEventListener('mouseup', scheduleUpdateAddCommentButton);
+document.addEventListener('selectionchange', () => {
+  if (document.activeElement === textInput) {
+    scheduleUpdateAddCommentButton();
+    scheduleCursorSend();
+  }
+});
 
+// ── Вычисление отступа при нажатии Enter ─────────────────────────────────────
 function computeEnterIndentSuffix(value, cursorPos) {
   const pos = Math.max(0, Math.min(cursorPos, value.length));
   const lineStart = value.lastIndexOf('\n', pos - 1) + 1;
@@ -1516,12 +1801,14 @@ textInput.addEventListener('keydown', (e) => {
     const newPos = start + EDITOR_INDENT.length;
     textInput.setSelectionRange(newPos, newPos);
     const file = getActiveFile();
+    pushOp(activeFileId, oldValue, newValue);
     syncCommentsToTextChange(activeFileId, oldValue, newValue);
     file.content = newValue;
     clampCommentsForActiveFile();
     refreshEditorDecorations();
     saveState();
     scheduleUpdateAddCommentButton();
+    scheduleCursorSend();
     return;
   }
 
@@ -1546,12 +1833,14 @@ textInput.addEventListener('keydown', (e) => {
   textInput.setSelectionRange(newPos, newPos);
 
   const file = getActiveFile();
+  pushOp(activeFileId, oldVal, newValue);
   syncCommentsToTextChange(activeFileId, oldVal, newValue);
   file.content = newValue;
   clampCommentsForActiveFile();
   refreshEditorDecorations();
   saveState();
   scheduleUpdateAddCommentButton();
+  scheduleCursorSend();
 });
 
 btnAddComment.addEventListener('click', () => {
@@ -1589,10 +1878,26 @@ roomDescEl.addEventListener('input', () => {
   scheduleDescriptionSave();
 });
 
-document.addEventListener('selectionchange', () => {
-  if (document.activeElement === textInput) scheduleUpdateAddCommentButton();
+roomDescEl.addEventListener('focus', () => { descFocused = true; });
+roomDescEl.addEventListener('blur',  () => { descFocused = false; });
+
+textInput.addEventListener('select', scheduleUpdateAddCommentButton);
+textInput.addEventListener('keyup', () => {
+  scheduleUpdateAddCommentButton();
+  scheduleCursorSend();
+});
+textInput.addEventListener('mouseup', () => {
+  scheduleUpdateAddCommentButton();
+  scheduleCursorSend();
 });
 
+// ── Скролл редактора — перерисовываем курсоры ─────────────────────────────────
+textInput.addEventListener('scroll', () => {
+  syncScrollAll();
+  renderAllRemoteCursors();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   const me = await getMe();
   if (!me || !me.id) {
@@ -1600,6 +1905,7 @@ async function boot() {
     return;
   }
   currentUserId = me.id;
+  currentUsername = me.username || '';
   await loadRoom();
   renderTabs();
   applyActiveFileContent();
@@ -1677,6 +1983,7 @@ async function boot() {
 
   connectRoomSocket();
 
+  // Перерисовывать курсоры при изменении размера редактора
   let editorLayoutRoTimer = null;
   const editorWrap = textInput && textInput.parentElement;
   const scheduleEditorLayoutRefresh = () => {
@@ -1684,6 +1991,7 @@ async function boot() {
     editorLayoutRoTimer = setTimeout(() => {
       editorLayoutRoTimer = null;
       refreshEditorDecorations();
+      renderAllRemoteCursors();
     }, 50);
   };
   if (editorWrap && window.ResizeObserver) {
@@ -1697,12 +2005,14 @@ async function boot() {
   window.addEventListener('beforeunload', () => {
     if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
     if (roomWsPingTimer) clearInterval(roomWsPingTimer);
+    // Удаляем DOM-элементы курсоров
+    for (const tid of Object.keys(remoteCursors)) {
+      removeRemoteCursor(tid);
+    }
     if (roomSocket && roomSocket.readyState === WebSocket.OPEN) {
       try {
         roomSocket.close();
-      } catch (_) {
-        /* */
-      }
+      } catch (_) { /* */ }
     }
   });
 
@@ -1710,9 +2020,7 @@ async function boot() {
     if (roomSocket && roomSocket.readyState === WebSocket.OPEN) {
       try {
         roomSocket.send(JSON.stringify({ type: 'ping' }));
-      } catch (_) {
-        /* */
-      }
+      } catch (_) { /* */ }
     }
   }, 25000);
 

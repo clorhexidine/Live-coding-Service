@@ -47,6 +47,21 @@ class RoomHub:
                 except Exception:
                     pass
 
+    async def broadcast_json_except(self, room_id: int, message: dict, exclude_ws: WebSocket) -> None:
+        """Рассылает сообщение всем кроме указанного соединения."""
+        async with self._lock:
+            targets = list(self._conns.get(room_id, []))
+        for ws in targets:
+            if ws is exclude_ws:
+                continue
+            try:
+                await ws.send_json(message)
+            except Exception:
+                try:
+                    await self.remove(room_id, ws)
+                except Exception:
+                    pass
+
     async def send_to_user_in_room(self, room_id: int, user_id: int, message: dict) -> None:
         async with self._lock:
             targets = list(self._conns.get(room_id, []))
