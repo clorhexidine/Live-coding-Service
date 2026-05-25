@@ -982,80 +982,94 @@ function showCodeTooltip(x, y, text) {
   codeTooltip.style.top = `${top}px`;
 }
 
-function offsetFromPointInTextarea(clientX, clientY) {
-  // Сначала пробуем нативный браузерный API для точного определения позиции
-  let nativeOffset = -1;
-  if (document.caretPositionFromPoint) {
-    const pos = document.caretPositionFromPoint(clientX, clientY);
-    if (pos && pos.offsetNode && pos.offsetNode.nodeType === Node.TEXT_NODE) {
-      // caretPositionFromPoint работает с DOM, а не с textarea — используем как подсказку
-      nativeOffset = pos.offset;
-    }
-  } else if (document.caretRangeFromPoint) {
-    const range = document.caretRangeFromPoint(clientX, clientY);
-    if (range && range.startContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
-      nativeOffset = range.startOffset;
-    }
-  }
+/** Кэшированный div-клон для offsetFromPointInTextarea — пересоздаётся при изменении размера */
+let _offsetMeasureDiv = null;
+let _offsetMeasureDivWidth = 0;
 
-  const rect = textInput.getBoundingClientRect();
-  // Проверяем что курсор вообще над textarea
-  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return -1;
-
-  const style = getComputedStyle(textInput);
-  const lh = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.6;
-  const padT = parseFloat(style.paddingTop) || 0;
-  const padL = parseFloat(style.paddingLeft) || 0;
-  const text = textInput.value;
-  const y = clientY - rect.top + textInput.scrollTop - padT;
-  const x = clientX - rect.left + textInput.scrollLeft - padL;
-  if (y < 0 || x < 0) return -1;
-  const lineIdx = Math.floor(y / lh);
-  const starts = getLineStarts(text);
-  if (lineIdx < 0 || lineIdx >= starts.length) return -1;
-  const lineStart = starts[lineIdx];
-  const lineEnd = lineIdx + 1 < starts.length ? starts[lineIdx + 1] - 1 : text.length;
-
-  // Используем скрытый div-клон textarea для точного измерения позиции символа
+function getOffsetMeasureDiv() {
+  const w = textInput.clientWidth;
+  if (_offsetMeasureDiv && _offsetMeasureDivWidth === w) return _offsetMeasureDiv;
+  if (_offsetMeasureDiv) document.body.removeChild(_offsetMeasureDiv);
+  const cs = getComputedStyle(textInput);
   const div = document.createElement('div');
-  const cs = style;
-  const measureProps = [
-    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
-    'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+  const props = [
+    'boxSizing', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
+    'letterSpacing', 'textTransform', 'lineHeight',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
     'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-    'boxSizing', 'whiteSpace', 'wordWrap', 'wordBreak', 'overflowWrap', 'tabSize',
+    'whiteSpace', 'wordWrap', 'wordBreak', 'tabSize',
   ];
   div.style.position = 'absolute';
   div.style.visibility = 'hidden';
-  div.style.pointerEvents = 'none';
+  div.style.overflow = 'hidden';
   div.style.left = '-9999px';
   div.style.top = '0';
-  div.style.width = `${textInput.clientWidth}px`;
-  div.style.whiteSpace = 'pre-wrap';
-  div.style.wordWrap = 'break-word';
-  div.style.wordBreak = 'break-word';
-  div.style.overflowWrap = 'break-word';
-  for (const p of measureProps) div.style[p] = cs[p];
-
-  // Вставляем текст строки и ищем ближайший символ по X
-  const lineText = text.slice(lineStart, lineEnd);
+  div.style.width = `${w}px`;
+  for (const p of props) div.style[p] = cs[p];
   document.body.appendChild(div);
+  _offsetMeasureDiv = div;
+  _offsetMeasureDivWidth = w;
+  return div;
+}
 
-  // Бинарный поиск: находим символ, левый край которого ближайший к x
+function offsetFromPointInTextarea(clientX, clientY) {
+  const rect = textInput.getBoundingClientRect();
+  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return -1;
+
+  const cs = getComputedStyle(textInput);
+  const brdL = parseFloat(cs.borderLeftWidth) || 0;
+  const brdT = parseFloat(cs.borderTopWidth) || 0;
+  const padL = parseFloat(cs.paddingLeft) || 0;
+  const padT = parseFloat(cs.paddingTop) || 0;
+
+  // Координаты курсора относительно контента textarea (с учётом скролла)
+  const targetTop = clientY - rect.top - brdT - padT + textInput.scrollTop;
+  const targetLeft = clientX - rect.left - brdL - padL + textInput.scrollLeft;
+
+  const text = textInput.value;
+  if (!text.length) return 0;
+
+  const div = getOffsetMeasureDiv();
+
+  // Вспомогательная функция: возвращает {top, left} для смещения i
+  function measureAt(i) {
+    const idx = Math.max(0, Math.min(i, text.length));
+    div.innerHTML = '';
+    const before = document.createTextNode(text.slice(0, idx));
+    const mark = document.createElement('span');
+    mark.textContent = text[idx] || '\u200b';
+    div.appendChild(before);
+    div.appendChild(mark);
+    return { top: mark.offsetTop, left: mark.offsetLeft };
+  }
+
+  // Шаг 1: бинарный поиск по вертикали — находим диапазон смещений на нужной визуальной строке
   let lo = 0;
-  let hi = lineText.length;
-  while (lo < hi) {
+  let hi = text.length;
+  while (hi - lo > 8) {
     const mid = (lo + hi) >> 1;
-    div.textContent = lineText.slice(0, mid) || '\u200b';
-    const w = div.scrollWidth;
-    if (w <= x) lo = mid + 1;
+    const m = measureAt(mid);
+    if (m.top <= targetTop) lo = mid;
     else hi = mid;
   }
-  document.body.removeChild(div);
 
-  // lo — индекс символа в строке, ближайший к позиции x
-  const col = Math.max(0, Math.min(lo, lineEnd - lineStart));
-  return lineStart + col;
+  // Шаг 2: линейный поиск в узком диапазоне — находим символ с минимальным расстоянием до курсора
+  const searchLo = Math.max(0, lo - 4);
+  const searchHi = Math.min(text.length, hi + 4);
+  let bestIdx = searchLo;
+  let bestDist = Infinity;
+  for (let i = searchLo; i <= searchHi; i++) {
+    const m = measureAt(i);
+    const dy = m.top - targetTop;
+    const dx = m.left - targetLeft;
+    const dist = dy * dy * 4 + dx * dx; // вертикаль весит больше
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+
+  return bestIdx;
 }
 
 function renderTabs({ renameFileId = null } = {}) {
@@ -1377,6 +1391,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('resize', () => {
+  _offsetMeasureDiv = null; // сбросить кэш при изменении размера
   if (isCommentPopoverOpen()) {
     positionCommentPopover(commentPopoverAnchorStart, commentPopoverAnchorEnd);
   }
@@ -1409,21 +1424,29 @@ textInput.addEventListener('paste', () => {
   }, 0);
 });
 
+let _tooltipRaf = null;
+
 textInput.addEventListener('mousemove', (e) => {
-  const off = offsetFromPointInTextarea(e.clientX, e.clientY);
-  if (off < 0) {
-    hideCodeTooltip();
-    setHotCommentSpan(null);
-    return;
-  }
-  const hit = getCommentAtOffset(off);
-  if (hit) {
-    showCodeTooltip(e.clientX, e.clientY, hit.body || '');
-    setHotCommentSpan(hit.id);
-  } else {
-    hideCodeTooltip();
-    setHotCommentSpan(null);
-  }
+  const cx = e.clientX;
+  const cy = e.clientY;
+  if (_tooltipRaf) return;
+  _tooltipRaf = requestAnimationFrame(() => {
+    _tooltipRaf = null;
+    const off = offsetFromPointInTextarea(cx, cy);
+    if (off < 0) {
+      hideCodeTooltip();
+      setHotCommentSpan(null);
+      return;
+    }
+    const hit = getCommentAtOffset(off);
+    if (hit) {
+      showCodeTooltip(cx, cy, hit.body || '');
+      setHotCommentSpan(hit.id);
+    } else {
+      hideCodeTooltip();
+      setHotCommentSpan(null);
+    }
+  });
 });
 
 textInput.addEventListener('mouseleave', () => {
