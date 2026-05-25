@@ -262,6 +262,11 @@ function getCommentAtOffset(off) {
   return hits.reduce((a, b) => (b.end - b.start < a.end - a.start ? b : a));
 }
 
+function getCommentsAtOffset(off) {
+  const fid = activeFileId;
+  return comments.filter((c) => c.file_id === fid && off >= c.start && off < c.end);
+}
+
 function setHotCommentSpan(commentId) {
   highlightPre.querySelectorAll('.hl-comment.hl-comment--hot').forEach((el) => {
     el.classList.remove('hl-comment--hot');
@@ -982,94 +987,94 @@ function showCodeTooltip(x, y, text) {
   codeTooltip.style.top = `${top}px`;
 }
 
-/** Кэшированный div-клон для offsetFromPointInTextarea — пересоздаётся при изменении размера */
-let _offsetMeasureDiv = null;
-let _offsetMeasureDivWidth = 0;
+function offsetFromPointInTextarea(clientX, clientY) {
+  // Используем highlightPre (абсолютно позиционирован поверх textarea, те же переносы)
+  // через нативный API браузера для точного определения символьного offset.
+  const pre = highlightPre;
+  const text = textInput.value;
 
-function getOffsetMeasureDiv() {
-  const w = textInput.clientWidth;
-  if (_offsetMeasureDiv && _offsetMeasureDivWidth === w) return _offsetMeasureDiv;
-  if (_offsetMeasureDiv) document.body.removeChild(_offsetMeasureDiv);
-  const cs = getComputedStyle(textInput);
-  const div = document.createElement('div');
-  const props = [
-    'boxSizing', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
-    'letterSpacing', 'textTransform', 'lineHeight',
-    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-    'whiteSpace', 'wordWrap', 'wordBreak', 'tabSize',
-  ];
-  div.style.position = 'absolute';
-  div.style.visibility = 'hidden';
-  div.style.overflow = 'hidden';
-  div.style.left = '-9999px';
-  div.style.top = '0';
-  div.style.width = `${w}px`;
-  for (const p of props) div.style[p] = cs[p];
-  document.body.appendChild(div);
-  _offsetMeasureDiv = div;
-  _offsetMeasureDivWidth = w;
-  return div;
+  // Попытка через caretPositionFromPoint (Firefox) или caretRangeFromPoint (Chrome/Safari)
+  let charOffset = -1;
+
+  // highlightPre имеет pointer-events:none — временно включаем для caret API
+  const prevPE = pre.style.pointerEvents;
+  pre.style.pointerEvents = 'auto';
+
+  try {
+    if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(clientX, clientY);
+      if (pos && pos.offsetNode) {
+        charOffset = resolveOffsetInPre(pre, pos.offsetNode, pos.offset, text);
+      }
+    } else if (document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(clientX, clientY);
+      if (range) {
+        charOffset = resolveOffsetInPre(pre, range.startContainer, range.startOffset, text);
+      }
+    }
+  } finally {
+    pre.style.pointerEvents = prevPE;
+  }
+
+  if (charOffset >= 0) return charOffset;
+
+  // Fallback: грубое приближение по строке/колонке
+  const rect = textInput.getBoundingClientRect();
+  const style = getComputedStyle(textInput);
+  const lh = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.6;
+  const padT = parseFloat(style.paddingTop) || 0;
+  const padL = parseFloat(style.paddingLeft) || 0;
+  const y = clientY - rect.top + textInput.scrollTop - padT;
+  const x = clientX - rect.left + textInput.scrollLeft - padL;
+  if (y < 0 || x < 0) return -1;
+  const lineIdx = Math.floor(y / lh);
+  const starts = getLineStarts(text);
+  if (lineIdx < 0 || lineIdx >= starts.length) return -1;
+  const lineStart = starts[lineIdx];
+  const lineEnd = lineIdx + 1 < starts.length ? starts[lineIdx + 1] - 1 : text.length;
+  const lineLen = lineEnd - lineStart + 1;
+  const fs = parseFloat(style.fontSize) || 14;
+  const cw = fs * 0.62;
+  const col = Math.max(0, Math.floor(x / cw));
+  return lineStart + Math.min(col, Math.max(0, lineLen - 1));
 }
 
-function offsetFromPointInTextarea(clientX, clientY) {
-  const rect = textInput.getBoundingClientRect();
-  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return -1;
+/**
+ * Переводит позицию DOM-узла внутри highlightPre в символьный offset в тексте textarea.
+ * Один проход по всем текстовым узлам pre; для span.hl-comment используем data-start/data-end.
+ */
+function resolveOffsetInPre(pre, node, domOffset, text) {
+  const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT, null);
+  let cursor = 0;
 
-  const cs = getComputedStyle(textInput);
-  const brdL = parseFloat(cs.borderLeftWidth) || 0;
-  const brdT = parseFloat(cs.borderTopWidth) || 0;
-  const padL = parseFloat(cs.paddingLeft) || 0;
-  const padT = parseFloat(cs.paddingTop) || 0;
+  let n = walker.nextNode();
+  while (n) {
+    const parent = n.parentElement;
+    const inSpan = parent && parent.classList && parent.classList.contains('hl-comment');
 
-  // Координаты курсора относительно контента textarea (с учётом скролла)
-  const targetTop = clientY - rect.top - brdT - padT + textInput.scrollTop;
-  const targetLeft = clientX - rect.left - brdL - padL + textInput.scrollLeft;
-
-  const text = textInput.value;
-  if (!text.length) return 0;
-
-  const div = getOffsetMeasureDiv();
-
-  // Вспомогательная функция: возвращает {top, left} для смещения i
-  function measureAt(i) {
-    const idx = Math.max(0, Math.min(i, text.length));
-    div.innerHTML = '';
-    const before = document.createTextNode(text.slice(0, idx));
-    const mark = document.createElement('span');
-    mark.textContent = text[idx] || '\u200b';
-    div.appendChild(before);
-    div.appendChild(mark);
-    return { top: mark.offsetTop, left: mark.offsetLeft };
-  }
-
-  // Шаг 1: бинарный поиск по вертикали — находим диапазон смещений на нужной визуальной строке
-  let lo = 0;
-  let hi = text.length;
-  while (hi - lo > 8) {
-    const mid = (lo + hi) >> 1;
-    const m = measureAt(mid);
-    if (m.top <= targetTop) lo = mid;
-    else hi = mid;
-  }
-
-  // Шаг 2: линейный поиск в узком диапазоне — находим символ с минимальным расстоянием до курсора
-  const searchLo = Math.max(0, lo - 4);
-  const searchHi = Math.min(text.length, hi + 4);
-  let bestIdx = searchLo;
-  let bestDist = Infinity;
-  for (let i = searchLo; i <= searchHi; i++) {
-    const m = measureAt(i);
-    const dy = m.top - targetTop;
-    const dx = m.left - targetLeft;
-    const dist = dy * dy * 4 + dx * dx; // вертикаль весит больше
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestIdx = i;
+    if (inSpan) {
+      const spanStart = parseInt(parent.dataset.start, 10);
+      const spanEnd = parseInt(parent.dataset.end, 10);
+      if (!isNaN(spanStart) && !isNaN(spanEnd)) {
+        if (n === node) {
+          return Math.max(0, Math.min(spanStart + domOffset, spanEnd));
+        }
+        cursor = spanEnd;
+        n = walker.nextNode();
+        continue;
+      }
     }
+
+    // Текстовый узел вне span
+    if (n === node) {
+      const result = cursor + Math.min(domOffset, n.textContent.length);
+      return Math.max(0, Math.min(result, text.length));
+    }
+    cursor += n.textContent.length;
+    n = walker.nextNode();
   }
 
-  return bestIdx;
+  return -1;
 }
 
 function renderTabs({ renameFileId = null } = {}) {
@@ -1391,7 +1396,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('resize', () => {
-  _offsetMeasureDiv = null; // сбросить кэш при изменении размера
   if (isCommentPopoverOpen()) {
     positionCommentPopover(commentPopoverAnchorStart, commentPopoverAnchorEnd);
   }
@@ -1424,29 +1428,25 @@ textInput.addEventListener('paste', () => {
   }, 0);
 });
 
-let _tooltipRaf = null;
-
 textInput.addEventListener('mousemove', (e) => {
-  const cx = e.clientX;
-  const cy = e.clientY;
-  if (_tooltipRaf) return;
-  _tooltipRaf = requestAnimationFrame(() => {
-    _tooltipRaf = null;
-    const off = offsetFromPointInTextarea(cx, cy);
-    if (off < 0) {
-      hideCodeTooltip();
-      setHotCommentSpan(null);
-      return;
-    }
-    const hit = getCommentAtOffset(off);
-    if (hit) {
-      showCodeTooltip(cx, cy, hit.body || '');
-      setHotCommentSpan(hit.id);
-    } else {
-      hideCodeTooltip();
-      setHotCommentSpan(null);
-    }
-  });
+  const off = offsetFromPointInTextarea(e.clientX, e.clientY);
+  if (off < 0) {
+    hideCodeTooltip();
+    setHotCommentSpan(null);
+    return;
+  }
+  const hits = getCommentsAtOffset(off);
+  if (hits.length) {
+    // Показываем все комментарии в точке, разделённые разделителем
+    const tooltipText = hits.map((c) => c.body || '').filter(Boolean).join('\n\n───\n\n');
+    showCodeTooltip(e.clientX, e.clientY, tooltipText || hits[0].body || '');
+    // Подсвечиваем самый короткий (наиболее точный) комментарий
+    const shortest = hits.reduce((a, b) => (b.end - b.start < a.end - a.start ? b : a));
+    setHotCommentSpan(shortest.id);
+  } else {
+    hideCodeTooltip();
+    setHotCommentSpan(null);
+  }
 });
 
 textInput.addEventListener('mouseleave', () => {
