@@ -1944,10 +1944,12 @@ textInput.addEventListener('mouseup', () => {
   scheduleCursorSend();
 });
 
-// ── Скролл редактора — перерисовываем курсоры ─────────────────────────────────
+// ── Скролл редактора — перерисовываем курсоры и скрываем тултип ──────────────
 textInput.addEventListener('scroll', () => {
   syncScrollAll();
   renderAllRemoteCursors();
+  hideCodeTooltip();
+  setHotCommentSpan(null);
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
