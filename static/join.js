@@ -21,7 +21,7 @@
     wrap.innerHTML = `
       <h1 class="join-gate-title">Приглашение в комнату</h1>
       <p class="join-gate-room-name">${escapeHtml(t)}</p>
-      <div id="join-pw-block" style="display:none"></div>
+      <div id="join-pw-block" class="pin-row-host" style="display:none"></div>
       <p class="room-settings-error" id="join-err" style="display:none"></p>
       <div class="join-gate-actions">
         <button type="button" class="app-modal-btn app-modal-btn--secondary" id="join-cancel">Отмена</button>
