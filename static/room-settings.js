@@ -9,137 +9,166 @@ function tabIdHeaders() {
 }
 
 /**
- * Модальное окно настроек комнаты (только владелец). Требует: modal.js, pin-ui.js.
+ * Модальное окно настроек комнаты (только владелец).
  * @param {number} roomId
  * @param {{ onDeleted?: () => void, onSaved?: () => void }} [hooks]
  */
 async function openRoomSettingsModal(roomId, hooks) {
   const onDeleted = hooks && hooks.onDeleted;
-  const onSaved = hooks && hooks.onSaved;
-
-  const BASE_URL = window.location.origin;
+  const onSaved   = hooks && hooks.onSaved;
+  const BASE_URL  = window.location.origin;
 
   const overlay = document.createElement('div');
-  overlay.className = 'room-settings-overlay';
+  overlay.className = 'rs-overlay';
   overlay.innerHTML = `
-    <div class="room-settings-dialog rs-dialog" role="dialog" aria-modal="true" aria-labelledby="rs-title">
-      <button type="button" class="room-settings-close" aria-label="Закрыть">×</button>
-      <h2 id="rs-title" class="room-settings-h2">Настройки комнаты</h2>
-
-      <!-- Название -->
-      <div class="rs-section">
-        <label class="rs-label" for="rs-title-input">Название</label>
-        <input id="rs-title-input" type="text" maxlength="255" class="room-settings-title-input" />
+    <div class="rs-dialog" role="dialog" aria-modal="true" aria-labelledby="rs-heading">
+      <div class="rs-header">
+        <h2 id="rs-heading" class="rs-heading">Настройки комнаты</h2>
+        <button type="button" class="rs-close" aria-label="Закрыть">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M2 2l14 14M16 2L2 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
 
-      <!-- Приглашение -->
-      <div class="rs-section">
-        <div class="rs-label">Приглашение</div>
-        <div class="rs-invite-box">
-          <a class="rs-invite-link" id="rs-invite-link" href="#" target="_blank" rel="noopener noreferrer"></a>
-          <div class="rs-invite-actions">
-            <button type="button" class="btn-secondary btn-compact" id="rs-copy-link">Копировать ссылку</button>
-            <button type="button" class="btn-secondary btn-compact" id="rs-copy-code">
-              Код: <span class="rs-code-badge" id="rs-code"></span>
+      <div class="rs-body">
+
+        <!-- Название -->
+        <div class="rs-field">
+          <label class="rs-field-label" for="rs-title-input">Название комнаты</label>
+          <input id="rs-title-input" type="text" maxlength="255" class="rs-input" autocomplete="off" />
+        </div>
+
+        <!-- Приглашение -->
+        <div class="rs-invite-card">
+          <div class="rs-invite-top">
+            <span class="rs-invite-eyebrow">Ссылка-приглашение</span>
+            <button type="button" class="rs-rotate-btn" id="rs-rotate" title="Сгенерировать новую ссылку">
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+                <path d="M13 7.5A5.5 5.5 0 1 1 7.5 2a5.48 5.48 0 0 1 3.89 1.61L13 2v4H9l1.47-1.47A3.5 3.5 0 1 0 11 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Новая ссылка
             </button>
           </div>
-        </div>
-      </div>
-
-      <!-- Участники -->
-      <div class="rs-section">
-        <div class="rs-label">Участники</div>
-        <ul class="room-settings-members" id="rs-members"></ul>
-      </div>
-
-      <!-- Забаненные (скрыто если пусто) -->
-      <div class="rs-section" id="rs-banned-section" style="display:none">
-        <div class="rs-label rs-label--muted">Удалённые участники</div>
-        <ul class="room-settings-members" id="rs-banned"></ul>
-      </div>
-
-      <!-- Пароль (скрытая панель) -->
-      <div class="rs-section">
-        <button type="button" class="rs-pwd-toggle" id="rs-pwd-toggle">
-          <span id="rs-pwd-toggle-text">Изменить пароль комнаты</span>
-          <span class="rs-pwd-toggle-arrow" id="rs-pwd-arrow">▸</span>
-        </button>
-        <div class="rs-pwd-panel" id="rs-pwd-panel" style="display:none">
-          <div id="rs-clear-wrap" class="room-settings-check-wrap" style="display:none">
-            <label class="room-settings-check">
-              <input type="checkbox" id="rs-clear-pw" />
-              <span>Убрать защиту паролем</span>
-            </label>
-          </div>
-          <div id="rs-old-wrap" class="room-settings-pin-block" style="display:none">
-            <span class="room-settings-hint">Текущий пароль</span>
-            <div id="rs-old-pin" class="pin-row-host"></div>
-          </div>
-          <div id="rs-new-wrap" class="room-settings-pin-block">
-            <span class="room-settings-hint" id="rs-new-hint">Новый пароль (6 символов)</span>
-            <div id="rs-new-pin" class="pin-row-host"></div>
+          <a class="rs-invite-url" id="rs-invite-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+          <div class="rs-invite-bottom">
+            <div class="rs-code-pill">
+              <span class="rs-code-label">Код</span>
+              <span class="rs-code-value" id="rs-code"></span>
+            </div>
+            <div class="rs-invite-btns">
+              <button type="button" class="rs-copy-btn" id="rs-copy-link" title="Копировать ссылку">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+                  <path d="M2 10V2h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Ссылка
+              </button>
+              <button type="button" class="rs-copy-btn" id="rs-copy-code" title="Копировать код">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+                  <path d="M2 10V2h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Код
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <p class="room-settings-error" id="rs-err" style="display:none"></p>
+        <!-- Участники -->
+        <div class="rs-field">
+          <div class="rs-field-label">Участники</div>
+          <ul class="rs-member-list" id="rs-members"></ul>
+        </div>
 
-      <div class="room-settings-actions rs-actions-row">
-        <button type="button" class="btn-primary rs-save-btn" id="rs-save">Сохранить</button>
-        <button type="button" class="app-modal-btn app-modal-btn--danger rs-delete-btn" id="rs-delete">Удалить комнату</button>
+        <!-- Удалённые участники -->
+        <div class="rs-field" id="rs-banned-section" style="display:none">
+          <div class="rs-field-label rs-field-label--dim">Удалённые участники</div>
+          <ul class="rs-member-list" id="rs-banned"></ul>
+        </div>
+
+        <!-- Пароль -->
+        <div class="rs-field">
+          <button type="button" class="rs-accordion-btn" id="rs-pwd-toggle">
+            <span id="rs-pwd-toggle-text">Установить пароль</span>
+            <svg class="rs-accordion-icon" id="rs-pwd-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="rs-accordion-body" id="rs-pwd-panel" style="display:none">
+            <div id="rs-clear-wrap" style="display:none; margin-bottom:12px">
+              <label class="rs-checkbox-label">
+                <input type="checkbox" id="rs-clear-pw" />
+                <span>Убрать пароль</span>
+              </label>
+            </div>
+            <div id="rs-old-wrap" style="display:none">
+              <p class="rs-pin-label">Текущий пароль</p>
+              <div id="rs-old-pin" class="pin-row-host"></div>
+            </div>
+            <div id="rs-new-wrap">
+              <p class="rs-pin-label" id="rs-new-hint">Новый пароль (6 символов, необязательно)</p>
+              <div id="rs-new-pin" class="pin-row-host"></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /rs-body -->
+
+      <p class="rs-error" id="rs-err" style="display:none"></p>
+
+      <div class="rs-footer">
+        <button type="button" class="rs-btn-save" id="rs-save">Сохранить</button>
+        <button type="button" class="rs-btn-danger" id="rs-delete">Удалить комнату</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
 
-  const inviteLink = overlay.querySelector('#rs-invite-link');
-  const codeEl = overlay.querySelector('#rs-code');
-  const titleInput = overlay.querySelector('#rs-title-input');
-  const clearPw = overlay.querySelector('#rs-clear-pw');
-  const clearWrap = overlay.querySelector('#rs-clear-wrap');
-  const oldWrap = overlay.querySelector('#rs-old-wrap');
-  const newWrap = overlay.querySelector('#rs-new-wrap');
-  const newHint = overlay.querySelector('#rs-new-hint');
-  const errEl = overlay.querySelector('#rs-err');
-  const membersUl = overlay.querySelector('#rs-members');
-  const bannedUl = overlay.querySelector('#rs-banned');
-  const bannedSection = overlay.querySelector('#rs-banned-section');
-  const pwdToggle = overlay.querySelector('#rs-pwd-toggle');
-  const pwdPanel = overlay.querySelector('#rs-pwd-panel');
-  const pwdArrow = overlay.querySelector('#rs-pwd-arrow');
-  const pwdToggleText = overlay.querySelector('#rs-pwd-toggle-text');
+  // ── Ссылки на элементы ────────────────────────────────────────────────────
+  const inviteLink   = overlay.querySelector('#rs-invite-link');
+  const codeEl       = overlay.querySelector('#rs-code');
+  const titleInput   = overlay.querySelector('#rs-title-input');
+  const clearPw      = overlay.querySelector('#rs-clear-pw');
+  const clearWrap    = overlay.querySelector('#rs-clear-wrap');
+  const oldWrap      = overlay.querySelector('#rs-old-wrap');
+  const newWrap      = overlay.querySelector('#rs-new-wrap');
+  const newHint      = overlay.querySelector('#rs-new-hint');
+  const errEl        = overlay.querySelector('#rs-err');
+  const membersUl    = overlay.querySelector('#rs-members');
+  const bannedUl     = overlay.querySelector('#rs-banned');
+  const bannedSection= overlay.querySelector('#rs-banned-section');
+  const pwdToggle    = overlay.querySelector('#rs-pwd-toggle');
+  const pwdPanel     = overlay.querySelector('#rs-pwd-panel');
+  const pwdArrow     = overlay.querySelector('#rs-pwd-arrow');
+  const pwdToggleText= overlay.querySelector('#rs-pwd-toggle-text');
+  const rotateBtn    = overlay.querySelector('#rs-rotate');
 
   const oldPinHost = overlay.querySelector('#rs-old-pin');
   const newPinHost = overlay.querySelector('#rs-new-pin');
   const oldPin = window.createPinRow(oldPinHost, { ariaLabel: 'Текущий пароль комнаты' });
   const newPin = window.createPinRow(newPinHost, { ariaLabel: 'Новый пароль' });
 
-  let fullInviteUrl = '';
-  let hasRoomPassword = false;
-  let initialTitle = '';
-  let pwdPanelOpen = false;
+  let fullInviteUrl  = '';
+  let hasRoomPassword= false;
+  let initialTitle   = '';
+  let pwdPanelOpen   = false;
 
+  // ── Закрытие ──────────────────────────────────────────────────────────────
   function close() {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
   }
-
-  function onKey(e) {
-    if (e.key === 'Escape') close();
-  }
+  function onKey(e) { if (e.key === 'Escape') close(); }
   document.addEventListener('keydown', onKey);
+  overlay.querySelector('.rs-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
-  overlay.querySelector('.room-settings-close').addEventListener('click', close);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
-  });
-
-  // Переключатель панели пароля
+  // ── Аккордеон пароля ──────────────────────────────────────────────────────
   pwdToggle.addEventListener('click', () => {
     pwdPanelOpen = !pwdPanelOpen;
     pwdPanel.style.display = pwdPanelOpen ? 'block' : 'none';
-    pwdArrow.textContent = pwdPanelOpen ? '▾' : '▸';
+    pwdArrow.style.transform = pwdPanelOpen ? 'rotate(180deg)' : '';
     if (!pwdPanelOpen) {
-      // Сбрасываем при закрытии
       clearPw.checked = false;
       oldPin.clear();
       newPin.clear();
@@ -147,16 +176,13 @@ async function openRoomSettingsModal(roomId, hooks) {
     }
   });
 
+  // ── Ошибки ────────────────────────────────────────────────────────────────
   function showErr(t) {
-    if (!t) {
-      errEl.style.display = 'none';
-      errEl.textContent = '';
-      return;
-    }
-    errEl.style.display = '';
-    errEl.textContent = t;
+    errEl.style.display = t ? '' : 'none';
+    errEl.textContent   = t || '';
   }
 
+  // ── Синхронизация UI пароля ───────────────────────────────────────────────
   function syncPasswordUi() {
     const clr = clearPw.checked;
     if (hasRoomPassword) {
@@ -164,31 +190,25 @@ async function openRoomSettingsModal(roomId, hooks) {
       newHint.textContent = 'Новый пароль (6 символов)';
     } else {
       oldWrap.style.display = 'none';
-      newHint.textContent = 'Пароль (6 символов, необязательно)';
+      newHint.textContent = 'Новый пароль (6 символов, необязательно)';
     }
     newWrap.style.display = clr ? 'none' : 'block';
   }
-
   clearPw.addEventListener('change', syncPasswordUi);
   newPinHost.addEventListener('input', () => {
-    if (hasRoomPassword && !clearPw.checked) {
+    if (hasRoomPassword && !clearPw.checked)
       oldWrap.style.display = newPin.getValue() ? 'block' : 'none';
-    }
   });
 
+  // ── Загрузка данных ───────────────────────────────────────────────────────
   async function load() {
     const res = await fetch(`/api/rooms/${roomId}/settings`, { credentials: 'include' });
-    if (res.status === 401) {
-      window.location.href = '/';
-      return;
-    }
+    if (res.status === 401) { window.location.href = '/'; return; }
     if (!res.ok) {
       await showAppAlert('Не удалось загрузить настройки', { title: 'Ошибка' });
-      close();
-      return;
+      close(); return;
     }
-    const data = await res.json();
-    applyData(data);
+    applyData(await res.json());
   }
 
   function applyData(data) {
@@ -204,8 +224,8 @@ async function openRoomSettingsModal(roomId, hooks) {
     hasRoomPassword = !!data.has_room_password;
     clearWrap.style.display = hasRoomPassword ? '' : 'none';
     pwdToggleText.textContent = hasRoomPassword
-      ? 'Изменить / убрать пароль комнаты'
-      : 'Установить пароль комнаты';
+      ? 'Изменить или убрать пароль'
+      : 'Установить пароль';
 
     clearPw.checked = false;
     oldPin.clear();
@@ -216,175 +236,164 @@ async function openRoomSettingsModal(roomId, hooks) {
     renderBanned(data.banned_members || []);
   }
 
+  // ── Участники ─────────────────────────────────────────────────────────────
   function renderMembers(members) {
     membersUl.innerHTML = '';
     members.forEach((m) => {
       const li = document.createElement('li');
-      li.className = 'room-settings-member';
-      const name = document.createElement('span');
-      name.className = 'room-settings-member-name';
-      name.textContent = m.username + (m.is_owner ? ' (владелец)' : '');
-      li.appendChild(name);
+      li.className = 'rs-member';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'rs-member-name';
+      nameEl.textContent = m.username;
+      if (m.is_owner) {
+        const badge = document.createElement('span');
+        badge.className = 'rs-member-badge';
+        badge.textContent = 'владелец';
+        nameEl.appendChild(badge);
+      }
+      li.appendChild(nameEl);
       if (!m.is_owner) {
-        const kick = document.createElement('button');
-        kick.type = 'button';
-        kick.className = 'btn-kick-member';
-        kick.setAttribute('aria-label', `Удалить ${m.username}`);
-        kick.title = 'Удалить из комнаты';
-        kick.textContent = '⊗';
-        kick.addEventListener('click', async () => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rs-member-kick';
+        btn.setAttribute('aria-label', `Удалить ${m.username}`);
+        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+        btn.addEventListener('click', async () => {
           const ok = await showAppConfirm({
             title: 'Удалить участника',
-            message: `Удалить пользователя «${m.username}» из комнаты?\nОн не сможет зайти по текущей ссылке.`,
-            confirmText: 'Удалить',
-            cancelText: 'Отмена',
-            danger: true,
+            message: `Удалить «${m.username}» из комнаты? Он не сможет войти по текущей ссылке.`,
+            confirmText: 'Удалить', cancelText: 'Отмена', danger: true,
           });
           if (!ok) return;
-          const res = await fetch(`/api/rooms/${roomId}/members/${m.id}`, {
-            method: 'DELETE',
-            credentials: 'include',
+          const r = await fetch(`/api/rooms/${roomId}/members/${m.id}`, {
+            method: 'DELETE', credentials: 'include',
           });
-          if (res.status === 401) {
-            window.location.href = '/';
-            return;
-          }
-          if (!res.ok) {
-            const j = await res.json().catch(() => ({}));
-            await showAppAlert(typeof j.detail === 'string' ? j.detail : 'Не удалось удалить', {
-              title: 'Ошибка',
-            });
+          if (r.status === 401) { window.location.href = '/'; return; }
+          if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            await showAppAlert(typeof j.detail === 'string' ? j.detail : 'Не удалось удалить', { title: 'Ошибка' });
             return;
           }
           await load();
           if (onSaved) onSaved();
         });
-        li.appendChild(kick);
+        li.appendChild(btn);
       }
       membersUl.appendChild(li);
     });
   }
 
+  // ── Удалённые участники ───────────────────────────────────────────────────
   function renderBanned(banned) {
     bannedUl.innerHTML = '';
-    if (!banned.length) {
-      bannedSection.style.display = 'none';
-      return;
-    }
-    bannedSection.style.display = '';
+    bannedSection.style.display = banned.length ? '' : 'none';
     banned.forEach((m) => {
       const li = document.createElement('li');
-      li.className = 'room-settings-member';
-      const name = document.createElement('span');
-      name.className = 'room-settings-member-name rs-banned-name';
-      name.textContent = m.username;
-      li.appendChild(name);
-
-      const reinviteBtn = document.createElement('button');
-      reinviteBtn.type = 'button';
-      reinviteBtn.className = 'btn-reinvite';
-      reinviteBtn.title = 'Пригласить заново (новая ссылка)';
-      reinviteBtn.textContent = 'Новое приглашение';
-      reinviteBtn.addEventListener('click', async () => {
+      li.className = 'rs-member rs-member--banned';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'rs-member-name rs-member-name--banned';
+      nameEl.textContent = m.username;
+      li.appendChild(nameEl);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'rs-reinvite-btn';
+      btn.textContent = 'Пригласить снова';
+      btn.addEventListener('click', async () => {
         const ok = await showAppConfirm({
           title: 'Новое приглашение',
-          message: `Снять блокировку для «${m.username}» и сгенерировать новую ссылку?\nСтарая ссылка перестанет работать для всех.`,
-          confirmText: 'Да, создать',
-          cancelText: 'Отмена',
+          message: `Снять блокировку для «${m.username}» и создать новую ссылку?\nСтарая ссылка перестанет работать.`,
+          confirmText: 'Создать', cancelText: 'Отмена',
         });
         if (!ok) return;
-        const res = await fetch(`/api/rooms/${roomId}/reinvite/${m.id}`, {
-          method: 'POST',
-          credentials: 'include',
+        const r = await fetch(`/api/rooms/${roomId}/reinvite/${m.id}`, {
+          method: 'POST', credentials: 'include',
         });
-        if (res.status === 401) {
-          window.location.href = '/';
-          return;
-        }
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
+        if (r.status === 401) { window.location.href = '/'; return; }
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
           await showAppAlert(typeof j.detail === 'string' ? j.detail : 'Не удалось', { title: 'Ошибка' });
           return;
         }
-        const data = await res.json();
-        applyData(data);
+        applyData(await r.json());
         if (onSaved) onSaved();
       });
-      li.appendChild(reinviteBtn);
+      li.appendChild(btn);
       bannedUl.appendChild(li);
     });
   }
 
-  overlay.querySelector('#rs-copy-link').addEventListener('click', async () => {
+  // ── Копирование ───────────────────────────────────────────────────────────
+  async function copyText(text, btn) {
     try {
-      await navigator.clipboard.writeText(fullInviteUrl);
-      showErr('');
+      await navigator.clipboard.writeText(text);
+      const orig = btn.innerHTML;
+      btn.textContent = '✓ Скопировано';
+      btn.classList.add('rs-copy-btn--ok');
+      setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('rs-copy-btn--ok'); }, 1800);
     } catch (_) {
-      showErr('Не удалось скопировать ссылку');
+      showErr('Не удалось скопировать');
     }
-  });
+  }
 
-  overlay.querySelector('#rs-copy-code').addEventListener('click', async () => {
+  overlay.querySelector('#rs-copy-link').addEventListener('click', function () {
+    copyText(fullInviteUrl, this);
+  });
+  overlay.querySelector('#rs-copy-code').addEventListener('click', function () {
     const c = codeEl.textContent.trim();
-    if (c === '—') return;
-    try {
-      await navigator.clipboard.writeText(c);
-      showErr('');
-    } catch (_) {
-      showErr('Не удалось скопировать код');
-    }
+    if (c !== '—') copyText(c, this);
   });
 
+  // ── Новая ссылка ──────────────────────────────────────────────────────────
+  rotateBtn.addEventListener('click', async () => {
+    const ok = await showAppConfirm({
+      title: 'Новая ссылка',
+      message: 'Создать новую ссылку-приглашение? Старая перестанет работать для всех.',
+      confirmText: 'Создать', cancelText: 'Отмена',
+    });
+    if (!ok) return;
+    rotateBtn.disabled = true;
+    const r = await fetch(`/api/rooms/${roomId}/rotate-invite`, {
+      method: 'POST', credentials: 'include',
+    });
+    rotateBtn.disabled = false;
+    if (r.status === 401) { window.location.href = '/'; return; }
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      showErr(typeof j.detail === 'string' ? j.detail : 'Не удалось обновить ссылку');
+      return;
+    }
+    applyData(await r.json());
+    if (onSaved) onSaved();
+  });
+
+  // ── Сохранить ─────────────────────────────────────────────────────────────
   overlay.querySelector('#rs-save').addEventListener('click', async () => {
     showErr('');
     const body = {};
     const t = titleInput.value.trim();
     if (t !== (initialTitle || '').trim()) {
-      if (!t) {
-        showErr('Введите название или оставьте без изменений.');
-        return;
-      }
+      if (!t) { showErr('Введите название комнаты.'); return; }
       body.title = t;
     }
-
     if (pwdPanelOpen) {
-      const np = newPin.getValue();
+      const np   = newPin.getValue();
       const oldp = oldPin.getValue();
-
       if (clearPw.checked) {
-        if (hasRoomPassword) {
-          body.clear_room_password = true;
-          body.old_room_password = oldp;
-        }
+        if (hasRoomPassword) { body.clear_room_password = true; body.old_room_password = oldp; }
       } else if (np) {
-        if (np.length !== 6) {
-          showErr('Новый пароль: ровно 6 символов.');
-          return;
-        }
+        if (np.length !== 6) { showErr('Новый пароль должен состоять ровно из 6 символов.'); return; }
         body.new_room_password = np;
         body.new_room_password_confirm = np;
         if (hasRoomPassword) body.old_room_password = oldp;
       }
     }
-
-    if (!Object.keys(body).length) {
-      close();
-      return;
-    }
-
+    if (!Object.keys(body).length) { close(); return; }
     const res = await fetch(`/api/rooms/${roomId}/settings`, {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...tabIdHeaders(),
-      },
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...tabIdHeaders() },
       body: JSON.stringify(body),
     });
-    if (res.status === 401) {
-      window.location.href = '/';
-      return;
-    }
+    if (res.status === 401) { window.location.href = '/'; return; }
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       showErr(typeof j.detail === 'string' ? j.detail : 'Не удалось сохранить');
@@ -394,24 +403,17 @@ async function openRoomSettingsModal(roomId, hooks) {
     close();
   });
 
+  // ── Удалить комнату ───────────────────────────────────────────────────────
   overlay.querySelector('#rs-delete').addEventListener('click', async () => {
     const ok = await showAppConfirm({
       title: 'Удалить комнату',
-      message: 'Удалить эту комнату? Все файлы будут удалены.',
-      confirmText: 'Удалить',
-      cancelText: 'Отмена',
-      danger: true,
+      message: 'Удалить комнату? Все файлы будут безвозвратно удалены.',
+      confirmText: 'Удалить', cancelText: 'Отмена', danger: true,
     });
     if (!ok) return;
     const res = await fetch(`/api/rooms/${roomId}`, { method: 'DELETE', credentials: 'include' });
-    if (res.status === 401) {
-      window.location.href = '/';
-      return;
-    }
-    if (!res.ok) {
-      await showAppAlert('Не удалось удалить комнату', { title: 'Ошибка' });
-      return;
-    }
+    if (res.status === 401) { window.location.href = '/'; return; }
+    if (!res.ok) { await showAppAlert('Не удалось удалить комнату', { title: 'Ошибка' }); return; }
     close();
     if (onDeleted) onDeleted();
   });

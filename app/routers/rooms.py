@@ -343,17 +343,37 @@ def reinvite_banned_member(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Снять бан и выдать новый код приглашения (старый код становится недействительным для этого пользователя)."""
+    """Снять бан и выдать новый код приглашения."""
     room = _get_room_or_403(db, user, room_id)
     _require_room_owner(room, user)
-    # Снимаем бан
     db.execute(
         delete(banned_members).where(
             banned_members.c.user_id == member_user_id,
             banned_members.c.room_id == room_id,
         )
     )
-    # Генерируем новый код приглашения для комнаты
+    room.invite_code = _unique_invite_code(db)
+    db.commit()
+    db.refresh(room)
+    return RoomSettingsOut(
+        title=room.title,
+        invite_code=room.invite_code or "",
+        has_room_password=bool(room.room_password_hash),
+        members=_members_for_settings(db, room),
+        banned_members=_banned_for_settings(db, room),
+    )
+
+
+@router.post("/{room_id}/rotate-invite", response_model=RoomSettingsOut)
+def rotate_invite_code(
+    room_id: int,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Сгенерировать новый код приглашения (старый перестаёт работать)."""
+    room = _get_room_or_403(db, user, room_id)
+    _require_room_owner(room, user)
     room.invite_code = _unique_invite_code(db)
     db.commit()
     db.refresh(room)
