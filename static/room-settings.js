@@ -41,33 +41,33 @@ async function openRoomSettingsModal(roomId, hooks) {
 
         <!-- Приглашение -->
         <div class="rs-invite-card">
-          <div class="rs-invite-bottom">
+          <div class="rs-invite-code-row">
             <div class="rs-code-pill">
               <span class="rs-code-label">Код</span>
               <span class="rs-code-value" id="rs-code"></span>
             </div>
-            <div class="rs-invite-btns">
-              <button type="button" class="rs-rotate-btn" id="rs-rotate" title="Обновить код приглашения">
-                <svg width="14" height="14" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-                  <path d="M13 7.5A5.5 5.5 0 1 1 7.5 2a5.48 5.48 0 0 1 3.89 1.61L13 2v4H9l1.47-1.47A3.5 3.5 0 1 0 11 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                Обновить
-              </button>
-              <button type="button" class="rs-copy-btn" id="rs-copy-link" title="Копировать ссылку">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                  <rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
-                  <path d="M2 10V2h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                Ссылка
-              </button>
-              <button type="button" class="rs-copy-btn" id="rs-copy-code" title="Копировать код">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                  <rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
-                  <path d="M2 10V2h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                Код
-              </button>
-            </div>
+            <button type="button" class="rs-rotate-btn" id="rs-rotate" title="Обновить код приглашения">
+              <svg width="14" height="14" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+                <path d="M13 7.5A5.5 5.5 0 1 1 7.5 2a5.48 5.48 0 0 1 3.89 1.61L13 2v4H9l1.47-1.47A3.5 3.5 0 1 0 11 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Обновить
+            </button>
+          </div>
+          <div class="rs-invite-copy-row">
+            <button type="button" class="rs-copy-btn" id="rs-copy-link">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+                <path d="M2 10V2h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Копировать ссылку
+            </button>
+            <button type="button" class="rs-copy-btn" id="rs-copy-code">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+                <path d="M2 10V2h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Копировать код
+            </button>
           </div>
         </div>
 

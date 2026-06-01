@@ -107,6 +107,7 @@ async function postJoinRoom(body) {
 
 async function tryJoinAfterPreview(preview, codeUpper) {
   if (preview.is_banned) {
+    // Показываем ошибку прямо в модальном окне кода, не закрывая его
     showJoinHint('Вы были удалены из этой комнаты. Попросите владельца выслать новое приглашение.', true);
     return;
   }
@@ -116,9 +117,11 @@ async function tryJoinAfterPreview(preview, codeUpper) {
   }
   if (preview.has_room_password) {
     window.__homeJoinCode = codeUpper;
+    closeJoinCodeModal();
     openJoinPwModal();
     return;
   }
+  closeJoinCodeModal();
   await postJoinRoom({ code: codeUpper });
 }
 
@@ -145,7 +148,6 @@ async function onJoinByCodeClick() {
     return;
   }
   const preview = await res.json();
-  closeJoinCodeModal();
   await tryJoinAfterPreview(preview, code);
 }
 

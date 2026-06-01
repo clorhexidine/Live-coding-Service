@@ -1648,13 +1648,45 @@ body.app-modal-open {
   overflow: hidden;
 }
 
-/* Единственная строка: код + кнопки */
-.rs-invite-bottom {
+/* Строка 1: код + кнопка обновить */
+.rs-invite-code-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+/* Строка 2: кнопки копирования — каждая растягивается на половину */
+.rs-invite-copy-row {
+  display: flex;
+  gap: 0;
+}
+
+.rs-invite-copy-row .rs-copy-btn {
+  flex: 1;
+  justify-content: center;
+  border-radius: 0;
+  border: none;
+  border-right: 1px solid var(--card-border);
+  background: transparent;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+}
+
+.rs-invite-copy-row .rs-copy-btn:last-child {
+  border-right: none;
+}
+
+.rs-invite-copy-row .rs-copy-btn:hover {
+  background: var(--btn-hover);
+  color: var(--page-text);
+}
+
+.rs-invite-copy-row .rs-copy-btn--ok {
+  background: color-mix(in srgb, var(--accent-emerald) 12%, transparent);
+  color: var(--accent-emerald);
 }
 
 .rs-rotate-btn {
