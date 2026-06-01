@@ -1648,29 +1648,21 @@ body.app-modal-open {
   overflow: hidden;
 }
 
-.rs-invite-top {
+/* Единственная строка: код + кнопки */
+.rs-invite-bottom {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px 14px 10px;
-  border-bottom: 1px solid var(--card-border);
-}
-
-.rs-invite-eyebrow {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--muted2);
+  padding: 12px 14px;
 }
 
 .rs-rotate-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 11px;
-  border-radius: 7px;
+  padding: 6px 12px;
+  border-radius: 8px;
   border: 1px solid var(--card-border);
   background: var(--btn-bg);
   color: var(--muted);
@@ -1687,30 +1679,6 @@ body.app-modal-open {
   border-color: color-mix(in srgb, var(--input-focus) 50%, var(--card-border));
 }
 .rs-rotate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* URL */
-.rs-invite-url {
-  display: block;
-  padding: 12px 14px;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--primary-btn);
-  word-break: break-all;
-  line-height: 1.5;
-  text-decoration: none;
-  border-bottom: 1px solid var(--card-border);
-  transition: background 0.12s;
-}
-.rs-invite-url:hover { background: color-mix(in srgb, var(--primary-btn) 6%, transparent); }
-
-/* Нижняя строка: код + кнопки */
-.rs-invite-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
-}
 
 .rs-code-pill {
   display: inline-flex;

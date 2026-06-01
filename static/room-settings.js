@@ -41,22 +41,18 @@ async function openRoomSettingsModal(roomId, hooks) {
 
         <!-- Приглашение -->
         <div class="rs-invite-card">
-          <div class="rs-invite-top">
-            <span class="rs-invite-eyebrow">Ссылка-приглашение</span>
-            <button type="button" class="rs-rotate-btn" id="rs-rotate" title="Сгенерировать новую ссылку">
-              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-                <path d="M13 7.5A5.5 5.5 0 1 1 7.5 2a5.48 5.48 0 0 1 3.89 1.61L13 2v4H9l1.47-1.47A3.5 3.5 0 1 0 11 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              Новая ссылка
-            </button>
-          </div>
-          <a class="rs-invite-url" id="rs-invite-link" href="#" target="_blank" rel="noopener noreferrer"></a>
           <div class="rs-invite-bottom">
             <div class="rs-code-pill">
               <span class="rs-code-label">Код</span>
               <span class="rs-code-value" id="rs-code"></span>
             </div>
             <div class="rs-invite-btns">
+              <button type="button" class="rs-rotate-btn" id="rs-rotate" title="Обновить код приглашения">
+                <svg width="14" height="14" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+                  <path d="M13 7.5A5.5 5.5 0 1 1 7.5 2a5.48 5.48 0 0 1 3.89 1.61L13 2v4H9l1.47-1.47A3.5 3.5 0 1 0 11 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Обновить
+              </button>
               <button type="button" class="rs-copy-btn" id="rs-copy-link" title="Копировать ссылку">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                   <rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
@@ -79,12 +75,6 @@ async function openRoomSettingsModal(roomId, hooks) {
         <div class="rs-field">
           <div class="rs-field-label">Участники</div>
           <ul class="rs-member-list" id="rs-members"></ul>
-        </div>
-
-        <!-- Удалённые участники -->
-        <div class="rs-field" id="rs-banned-section" style="display:none">
-          <div class="rs-field-label rs-field-label--dim">Удалённые участники</div>
-          <ul class="rs-member-list" id="rs-banned"></ul>
         </div>
 
         <!-- Пароль -->
@@ -125,7 +115,6 @@ async function openRoomSettingsModal(roomId, hooks) {
   document.body.appendChild(overlay);
 
   // ── Ссылки на элементы ────────────────────────────────────────────────────
-  const inviteLink   = overlay.querySelector('#rs-invite-link');
   const codeEl       = overlay.querySelector('#rs-code');
   const titleInput   = overlay.querySelector('#rs-title-input');
   const clearPw      = overlay.querySelector('#rs-clear-pw');
@@ -135,8 +124,6 @@ async function openRoomSettingsModal(roomId, hooks) {
   const newHint      = overlay.querySelector('#rs-new-hint');
   const errEl        = overlay.querySelector('#rs-err');
   const membersUl    = overlay.querySelector('#rs-members');
-  const bannedUl     = overlay.querySelector('#rs-banned');
-  const bannedSection= overlay.querySelector('#rs-banned-section');
   const pwdToggle    = overlay.querySelector('#rs-pwd-toggle');
   const pwdPanel     = overlay.querySelector('#rs-pwd-panel');
   const pwdArrow     = overlay.querySelector('#rs-pwd-arrow');
@@ -217,8 +204,6 @@ async function openRoomSettingsModal(roomId, hooks) {
 
     const code = data.invite_code || '';
     fullInviteUrl = `${BASE_URL}/join/${code}`;
-    inviteLink.href = fullInviteUrl;
-    inviteLink.textContent = fullInviteUrl;
     codeEl.textContent = code || '—';
 
     hasRoomPassword = !!data.has_room_password;
@@ -233,7 +218,6 @@ async function openRoomSettingsModal(roomId, hooks) {
     syncPasswordUi();
 
     renderMembers(data.members || []);
-    renderBanned(data.banned_members || []);
   }
 
   // ── Участники ─────────────────────────────────────────────────────────────
@@ -280,45 +264,6 @@ async function openRoomSettingsModal(roomId, hooks) {
         li.appendChild(btn);
       }
       membersUl.appendChild(li);
-    });
-  }
-
-  // ── Удалённые участники ───────────────────────────────────────────────────
-  function renderBanned(banned) {
-    bannedUl.innerHTML = '';
-    bannedSection.style.display = banned.length ? '' : 'none';
-    banned.forEach((m) => {
-      const li = document.createElement('li');
-      li.className = 'rs-member rs-member--banned';
-      const nameEl = document.createElement('span');
-      nameEl.className = 'rs-member-name rs-member-name--banned';
-      nameEl.textContent = m.username;
-      li.appendChild(nameEl);
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'rs-reinvite-btn';
-      btn.textContent = 'Пригласить снова';
-      btn.addEventListener('click', async () => {
-        const ok = await showAppConfirm({
-          title: 'Новое приглашение',
-          message: `Снять блокировку для «${m.username}» и создать новую ссылку?\nСтарая ссылка перестанет работать.`,
-          confirmText: 'Создать', cancelText: 'Отмена',
-        });
-        if (!ok) return;
-        const r = await fetch(`/api/rooms/${roomId}/reinvite/${m.id}`, {
-          method: 'POST', credentials: 'include',
-        });
-        if (r.status === 401) { window.location.href = '/'; return; }
-        if (!r.ok) {
-          const j = await r.json().catch(() => ({}));
-          await showAppAlert(typeof j.detail === 'string' ? j.detail : 'Не удалось', { title: 'Ошибка' });
-          return;
-        }
-        applyData(await r.json());
-        if (onSaved) onSaved();
-      });
-      li.appendChild(btn);
-      bannedUl.appendChild(li);
     });
   }
 
