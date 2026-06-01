@@ -13,6 +13,15 @@ user_rooms = Table(
     Column("joined_at", DateTime, default=datetime.utcnow),
 )
 
+# Таблица забаненных участников (выгнанных из комнаты)
+banned_members = Table(
+    "banned_members",
+    Base.metadata,
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("room_id", Integer, ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True),
+    Column("banned_at", DateTime, default=datetime.utcnow),
+)
+
 
 class User(Base):
     __tablename__ = "users"

@@ -9,7 +9,7 @@ from app.auth import decode_token, hash_password, verify_password
 from app.database import SessionLocal, get_db
 from app.deps import COOKIE_NAME, get_current_user
 from app.invites import new_invite_code, new_invite_token
-from app.models import Room, RoomComment, RoomFile, User, user_rooms
+from app.models import Room, RoomComment, RoomFile, User, banned_members, user_rooms
 from app.realtime_hub import hub
 from app.schemas import (
     CommentOut,
@@ -39,6 +39,16 @@ def _user_has_room_access(db: Session, user_id: int, room_id: int) -> bool:
     return row is not None
 
 
+def _user_is_banned(db: Session, user_id: int, room_id: int) -> bool:
+    row = db.execute(
+        select(banned_members.c.room_id).where(
+            banned_members.c.user_id == user_id,
+            banned_members.c.room_id == room_id,
+        )
+    ).first()
+    return row is not None
+
+
 def _get_room_or_403(db: Session, user: User, room_id: int) -> Room:
     room = db.get(Room, room_id)
     if not room:
@@ -53,13 +63,6 @@ def _find_room_by_code(db: Session, code: str) -> Room | None:
     if not c:
         return None
     return db.execute(select(Room).where(Room.invite_code == c)).scalar_one_or_none()
-
-
-def _find_room_by_token(db: Session, token: str) -> Room | None:
-    t = (token or "").strip()
-    if not t:
-        return None
-    return db.execute(select(Room).where(Room.invite_token == t)).scalar_one_or_none()
 
 
 def _user_room_titles(db: Session, user_id: int) -> set[str]:
@@ -111,8 +114,6 @@ def _room_to_out(db: Session, room: Room, viewer: User | None = None) -> RoomOut
         .scalars()
         .all()
     )
-    # is_owner вычисляется только для прямых запросов конкретного пользователя.
-    # При WS-бродкасте viewer=None, чтобы не рассылать чужой is_owner всем участникам.
     is_owner = viewer is not None and viewer.id == room.owner_id
     has_pw = bool(room.room_password_hash)
     return RoomOut(
@@ -150,11 +151,13 @@ def join_preview_by_code(
     room = _find_room_by_code(db, code)
     if not room:
         raise HTTPException(status_code=404, detail="Комната не найдена")
+    is_banned = _user_is_banned(db, user.id, room.id)
     return JoinPreviewOut(
         room_id=room.id,
         title=room.title,
         has_room_password=bool(room.room_password_hash),
         already_member=_user_has_room_access(db, user.id, room.id),
+        is_banned=is_banned,
     )
 
 
@@ -164,14 +167,17 @@ def join_preview_by_token(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    room = _find_room_by_token(db, token)
+    # token здесь — это invite_code (6 символов), путь /join/{code}
+    room = _find_room_by_code(db, token)
     if not room:
         raise HTTPException(status_code=404, detail="Комната не найдена")
+    is_banned = _user_is_banned(db, user.id, room.id)
     return JoinPreviewOut(
         room_id=room.id,
         title=room.title,
         has_room_password=bool(room.room_password_hash),
         already_member=_user_has_room_access(db, user.id, room.id),
+        is_banned=is_banned,
     )
 
 
@@ -185,9 +191,14 @@ def join_room(
     token = (body.invite_token or "").strip() or None
     if bool(code) == bool(token):
         raise HTTPException(status_code=400, detail="Укажите код или пригласительный токен")
-    room = _find_room_by_code(db, code) if code else _find_room_by_token(db, token or "")
+    # Оба варианта теперь ищут по коду
+    lookup_code = code or token or ""
+    room = _find_room_by_code(db, lookup_code)
     if not room:
         raise HTTPException(status_code=404, detail="Комната не найдена")
+    # Проверяем бан
+    if _user_is_banned(db, user.id, room.id):
+        raise HTTPException(status_code=403, detail="Вы были удалены из этой комнаты. Попросите владельца выслать новое приглашение.")
     if _user_has_room_access(db, user.id, room.id):
         return {"ok": True, "room_id": room.id, "already_member": True}
     if room.room_password_hash:
@@ -231,6 +242,18 @@ def _members_for_settings(db: Session, room: Room) -> list[RoomMemberOut]:
     return out
 
 
+def _banned_for_settings(db: Session, room: Room) -> list[RoomMemberOut]:
+    users = db.scalars(
+        select(User)
+        .join(banned_members, User.id == banned_members.c.user_id)
+        .where(banned_members.c.room_id == room.id)
+    ).all()
+    return sorted(
+        [RoomMemberOut(id=u.id, username=u.username, is_owner=False, is_banned=True) for u in users],
+        key=lambda m: m.username.lower(),
+    )
+
+
 @router.get("/{room_id}/settings", response_model=RoomSettingsOut)
 def get_room_settings(
     room_id: int,
@@ -239,18 +262,16 @@ def get_room_settings(
 ):
     room = _get_room_or_403(db, user, room_id)
     _require_room_owner(room, user)
-    if not room.invite_token:
-        room.invite_token = new_invite_token()
+    if not room.invite_code:
         room.invite_code = _unique_invite_code(db)
         db.commit()
         db.refresh(room)
-    invite_path = f"/join/{room.invite_token}"
     return RoomSettingsOut(
         title=room.title,
-        invite_path=invite_path,
         invite_code=room.invite_code or "",
         has_room_password=bool(room.room_password_hash),
         members=_members_for_settings(db, room),
+        banned_members=_banned_for_settings(db, room),
     )
 
 
@@ -288,17 +309,16 @@ def patch_room_settings(
 
     db.commit()
     db.refresh(room)
-    if not room.invite_token:
-        room.invite_token = new_invite_token()
+    if not room.invite_code:
         room.invite_code = _unique_invite_code(db)
         db.commit()
         db.refresh(room)
     out = RoomSettingsOut(
         title=room.title,
-        invite_path=f"/join/{room.invite_token}",
         invite_code=room.invite_code or "",
         has_room_password=bool(room.room_password_hash),
         members=_members_for_settings(db, room),
+        banned_members=_banned_for_settings(db, room),
     )
     if data.title is not None:
         seq = hub.next_seq(room_id)
@@ -314,6 +334,36 @@ def patch_room_settings(
             },
         )
     return out
+
+
+@router.post("/{room_id}/reinvite/{member_user_id}", response_model=RoomSettingsOut)
+def reinvite_banned_member(
+    room_id: int,
+    member_user_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Снять бан и выдать новый код приглашения (старый код становится недействительным для этого пользователя)."""
+    room = _get_room_or_403(db, user, room_id)
+    _require_room_owner(room, user)
+    # Снимаем бан
+    db.execute(
+        delete(banned_members).where(
+            banned_members.c.user_id == member_user_id,
+            banned_members.c.room_id == room_id,
+        )
+    )
+    # Генерируем новый код приглашения для комнаты
+    room.invite_code = _unique_invite_code(db)
+    db.commit()
+    db.refresh(room)
+    return RoomSettingsOut(
+        title=room.title,
+        invite_code=room.invite_code or "",
+        has_room_password=bool(room.room_password_hash),
+        members=_members_for_settings(db, room),
+        banned_members=_banned_for_settings(db, room),
+    )
 
 
 @router.get("", response_model=list[RoomListItem])
@@ -444,7 +494,7 @@ def save_room_state(
 ):
     room = _get_room_or_403(db, user, room_id)
     _apply_room_state_to_db(db, room, body)
-    out = _room_to_out(db, room, None)   # is_owner вычисляется на клиенте по owner_id
+    out = _room_to_out(db, room, None)
     seq = hub.next_seq(room_id)
     payload = {
         "type": "state",
@@ -549,6 +599,11 @@ def remove_room_member(
     )
     if res.rowcount == 0:
         raise HTTPException(status_code=404, detail="Участник не найден в комнате")
+    # Добавляем в бан-лист
+    try:
+        db.execute(insert(banned_members).values(user_id=member_user_id, room_id=room_id))
+    except Exception:
+        pass  # уже забанен
     db.commit()
     background_tasks.add_task(
         hub.send_to_user_in_room,
@@ -596,21 +651,18 @@ async def room_websocket(websocket: WebSocket, room_id: int):
                 await websocket.send_json({"type": "pong"})
                 continue
 
-            # Операция редактирования: ретранслируем всем остальным без сохранения в БД.
-            # Персистентность обеспечивается отдельным state-сообщением с дебаунсом.
             if t == "op":
                 tab_id = str(raw.get("tab_id") or "")[:80]
-                websocket.state.tab_id = tab_id  # запоминаем для cursor_leave
+                websocket.state.tab_id = tab_id
                 file_id = str(raw.get("file_id") or "")[:64]
                 pos = raw.get("pos")
                 remove = raw.get("remove")
-                insert = raw.get("insert")
-                # Базовая валидация
+                insert_text = raw.get("insert")
                 if (
                     file_id
                     and isinstance(pos, int) and pos >= 0
                     and isinstance(remove, int) and remove >= 0
-                    and isinstance(insert, str) and len(insert) <= 200000
+                    and isinstance(insert_text, str) and len(insert_text) <= 200000
                 ):
                     await hub.broadcast_json_except(
                         room_id,
@@ -620,16 +672,15 @@ async def room_websocket(websocket: WebSocket, room_id: int):
                             "file_id": file_id,
                             "pos": pos,
                             "remove": remove,
-                            "insert": insert,
+                            "insert": insert_text,
                         },
                         websocket,
                     )
                 continue
 
-            # Позиция курсора: ретранслируем всем остальным без сохранения.
             if t == "cursor":
                 tab_id = str(raw.get("tab_id") or "")[:80]
-                websocket.state.tab_id = tab_id  # запоминаем для cursor_leave
+                websocket.state.tab_id = tab_id
                 file_id = str(raw.get("file_id") or "")[:64]
                 pos = raw.get("pos")
                 username = str(raw.get("username") or "")[:64]
@@ -669,7 +720,7 @@ async def room_websocket(websocket: WebSocket, room_id: int):
                     await websocket.send_json({"type": "access_lost"})
                     break
                 _apply_room_state_to_db(db, room_inst, body)
-                out = _room_to_out(db, room_inst, None)  # is_owner вычисляется на клиенте
+                out = _room_to_out(db, room_inst, None)
             except HTTPException as he:
                 db.rollback()
                 await websocket.send_json({"type": "error", "detail": str(he.detail)})
@@ -690,7 +741,6 @@ async def room_websocket(websocket: WebSocket, room_id: int):
     except WebSocketDisconnect:
         pass
     finally:
-        # Уведомляем остальных что пользователь отключился — убираем его курсор
         await hub.broadcast_json_except(
             room_id,
             {"type": "cursor_leave", "tab_id": getattr(websocket.state, "tab_id", "")},

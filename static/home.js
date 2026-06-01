@@ -106,6 +106,10 @@ async function postJoinRoom(body) {
 }
 
 async function tryJoinAfterPreview(preview, codeUpper) {
+  if (preview.is_banned) {
+    showJoinHint('Вы были удалены из этой комнаты. Попросите владельца выслать новое приглашение.', true);
+    return;
+  }
   if (preview.already_member) {
     window.location.href = `/room/${preview.room_id}`;
     return;

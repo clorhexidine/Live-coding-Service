@@ -1,10 +1,10 @@
 (function () {
   const m = window.location.pathname.match(/^\/join\/([^/]+)/);
-  const token = m ? m[1] : '';
+  const code = m ? m[1] : '';
   const root = document.getElementById('join-root');
   const loadingEl = document.getElementById('join-loading');
 
-  if (!token || !root) {
+  if (!code || !root) {
     window.location.href = '/home';
     return;
   }
@@ -43,7 +43,7 @@
     wrap.querySelector('#join-enter').addEventListener('click', async () => {
       const err = wrap.querySelector('#join-err');
       err.style.display = 'none';
-      const body = { invite_token: token };
+      const body = { invite_token: code };
       if (preview.has_room_password) {
         const pw = pin.getValue();
         if (pw.length !== 6) {
@@ -74,6 +74,20 @@
     });
   }
 
+  function showBanned(preview) {
+    clearRoot();
+    const t = preview.title || `Комната #${preview.room_id}`;
+    root.innerHTML = `
+      <div class="join-gate-card">
+        <h1 class="join-gate-title">Доступ закрыт</h1>
+        <p class="join-gate-room-name">${escapeHtml(t)}</p>
+        <p class="join-gate-banned-msg">Вы были удалены из этой комнаты.<br>Попросите владельца выслать новое приглашение.</p>
+        <div class="join-gate-actions">
+          <a class="btn-primary join-link-btn" href="/home">На главную</a>
+        </div>
+      </div>`;
+  }
+
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;')
@@ -89,7 +103,7 @@
       return;
     }
 
-    const res = await fetch(`/api/rooms/join-preview-token/${encodeURIComponent(token)}`, {
+    const res = await fetch(`/api/rooms/join-preview-token/${encodeURIComponent(code)}`, {
       credentials: 'include',
     });
     if (res.status === 401) {
@@ -110,6 +124,11 @@
     }
     const preview = await res.json();
     loadingEl.style.display = 'none';
+
+    if (preview.is_banned) {
+      showBanned(preview);
+      return;
+    }
 
     if (preview.already_member) {
       window.location.replace(`/room/${preview.room_id}`);

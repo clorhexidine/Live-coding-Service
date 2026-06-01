@@ -14,7 +14,8 @@ def run_sqlite_migrations():
     if not str(engine.url).startswith("sqlite"):
         return
     insp = inspect(engine)
-    if "rooms" not in insp.get_table_names():
+    tables = insp.get_table_names()
+    if "rooms" not in tables:
         return
     cols = {c["name"] for c in insp.get_columns("rooms")}
     with engine.begin() as conn:
@@ -27,6 +28,18 @@ def run_sqlite_migrations():
         if "room_password_hash" not in cols:
             conn.execute(text("ALTER TABLE rooms ADD COLUMN room_password_hash VARCHAR(255)"))
 
+    # Создаём таблицу banned_members если её нет
+    if "banned_members" not in tables:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS banned_members (
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                    banned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, room_id)
+                )
+            """))
+
 
 def _postgres_add_room_columns():
     if not str(engine.url).startswith("postgresql"):
@@ -35,6 +48,14 @@ def _postgres_add_room_columns():
         "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS invite_token VARCHAR(64)",
         "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS invite_code VARCHAR(6)",
         "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS room_password_hash VARCHAR(255)",
+        """
+        CREATE TABLE IF NOT EXISTS banned_members (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+            banned_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (user_id, room_id)
+        )
+        """,
     ]
     with engine.begin() as conn:
         for s in stmts:

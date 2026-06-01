@@ -17,51 +17,76 @@ async function openRoomSettingsModal(roomId, hooks) {
   const onDeleted = hooks && hooks.onDeleted;
   const onSaved = hooks && hooks.onSaved;
 
+  const BASE_URL = window.location.origin;
+
   const overlay = document.createElement('div');
   overlay.className = 'room-settings-overlay';
   overlay.innerHTML = `
-    <div class="room-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="rs-title">
+    <div class="room-settings-dialog rs-dialog" role="dialog" aria-modal="true" aria-labelledby="rs-title">
       <button type="button" class="room-settings-close" aria-label="Закрыть">×</button>
       <h2 id="rs-title" class="room-settings-h2">Настройки комнаты</h2>
-      <div class="room-settings-section">
-        <div class="room-settings-invite-row">
-          <a class="room-settings-invite-link" id="rs-invite-link" href="#" target="_blank" rel="noopener noreferrer"></a>
-          <button type="button" class="btn-secondary btn-compact" id="rs-copy-link">Копировать ссылку</button>
-        </div>
-        <div class="room-settings-code-row">
-          <span class="room-settings-code" id="rs-code"></span>
-          <button type="button" class="btn-secondary btn-compact" id="rs-copy-code">Копировать код</button>
-        </div>
-      </div>
-      <div class="room-settings-section">
-        <div class="room-settings-label">Название</div>
+
+      <!-- Название -->
+      <div class="rs-section">
+        <label class="rs-label" for="rs-title-input">Название</label>
         <input id="rs-title-input" type="text" maxlength="255" class="room-settings-title-input" />
       </div>
-      <div class="room-settings-section" id="rs-pwd-section">
-        <div class="room-settings-label">Пароль комнаты</div>
-        <div id="rs-clear-wrap" class="room-settings-check-wrap">
-        <label class="room-settings-check">
-          <input type="checkbox" id="rs-clear-pw" />
-          <span>Убрать защиту паролем</span>
-        </label>
-        </div>
-        <div id="rs-old-wrap" class="room-settings-pin-block" style="display:none">
-          <span class="room-settings-hint">Текущий пароль</span>
-          <div id="rs-old-pin" class="pin-row-host"></div>
-        </div>
-        <div id="rs-new-wrap" class="room-settings-pin-block">
-          <span class="room-settings-hint">Новый пароль (6 символов, необязательно)</span>
-          <div id="rs-new-pin" class="pin-row-host"></div>
+
+      <!-- Приглашение -->
+      <div class="rs-section">
+        <div class="rs-label">Приглашение</div>
+        <div class="rs-invite-box">
+          <a class="rs-invite-link" id="rs-invite-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+          <div class="rs-invite-actions">
+            <button type="button" class="btn-secondary btn-compact" id="rs-copy-link">Копировать ссылку</button>
+            <button type="button" class="btn-secondary btn-compact" id="rs-copy-code">
+              Код: <span class="rs-code-badge" id="rs-code"></span>
+            </button>
+          </div>
         </div>
       </div>
-      <div class="room-settings-section">
-        <div class="room-settings-label">Участники</div>
+
+      <!-- Участники -->
+      <div class="rs-section">
+        <div class="rs-label">Участники</div>
         <ul class="room-settings-members" id="rs-members"></ul>
       </div>
+
+      <!-- Забаненные (скрыто если пусто) -->
+      <div class="rs-section" id="rs-banned-section" style="display:none">
+        <div class="rs-label rs-label--muted">Удалённые участники</div>
+        <ul class="room-settings-members" id="rs-banned"></ul>
+      </div>
+
+      <!-- Пароль (скрытая панель) -->
+      <div class="rs-section">
+        <button type="button" class="rs-pwd-toggle" id="rs-pwd-toggle">
+          <span id="rs-pwd-toggle-text">Изменить пароль комнаты</span>
+          <span class="rs-pwd-toggle-arrow" id="rs-pwd-arrow">▸</span>
+        </button>
+        <div class="rs-pwd-panel" id="rs-pwd-panel" style="display:none">
+          <div id="rs-clear-wrap" class="room-settings-check-wrap" style="display:none">
+            <label class="room-settings-check">
+              <input type="checkbox" id="rs-clear-pw" />
+              <span>Убрать защиту паролем</span>
+            </label>
+          </div>
+          <div id="rs-old-wrap" class="room-settings-pin-block" style="display:none">
+            <span class="room-settings-hint">Текущий пароль</span>
+            <div id="rs-old-pin" class="pin-row-host"></div>
+          </div>
+          <div id="rs-new-wrap" class="room-settings-pin-block">
+            <span class="room-settings-hint" id="rs-new-hint">Новый пароль (6 символов)</span>
+            <div id="rs-new-pin" class="pin-row-host"></div>
+          </div>
+        </div>
+      </div>
+
       <p class="room-settings-error" id="rs-err" style="display:none"></p>
-      <div class="room-settings-actions">
-        <button type="button" class="btn-primary" id="rs-save">Сохранить</button>
-        <button type="button" class="app-modal-btn app-modal-btn--danger" id="rs-delete">Удалить комнату</button>
+
+      <div class="room-settings-actions rs-actions-row">
+        <button type="button" class="btn-primary rs-save-btn" id="rs-save">Сохранить</button>
+        <button type="button" class="app-modal-btn app-modal-btn--danger rs-delete-btn" id="rs-delete">Удалить комнату</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -70,10 +95,18 @@ async function openRoomSettingsModal(roomId, hooks) {
   const codeEl = overlay.querySelector('#rs-code');
   const titleInput = overlay.querySelector('#rs-title-input');
   const clearPw = overlay.querySelector('#rs-clear-pw');
+  const clearWrap = overlay.querySelector('#rs-clear-wrap');
   const oldWrap = overlay.querySelector('#rs-old-wrap');
   const newWrap = overlay.querySelector('#rs-new-wrap');
+  const newHint = overlay.querySelector('#rs-new-hint');
   const errEl = overlay.querySelector('#rs-err');
   const membersUl = overlay.querySelector('#rs-members');
+  const bannedUl = overlay.querySelector('#rs-banned');
+  const bannedSection = overlay.querySelector('#rs-banned-section');
+  const pwdToggle = overlay.querySelector('#rs-pwd-toggle');
+  const pwdPanel = overlay.querySelector('#rs-pwd-panel');
+  const pwdArrow = overlay.querySelector('#rs-pwd-arrow');
+  const pwdToggleText = overlay.querySelector('#rs-pwd-toggle-text');
 
   const oldPinHost = overlay.querySelector('#rs-old-pin');
   const newPinHost = overlay.querySelector('#rs-new-pin');
@@ -83,6 +116,7 @@ async function openRoomSettingsModal(roomId, hooks) {
   let fullInviteUrl = '';
   let hasRoomPassword = false;
   let initialTitle = '';
+  let pwdPanelOpen = false;
 
   function close() {
     overlay.remove();
@@ -99,6 +133,20 @@ async function openRoomSettingsModal(roomId, hooks) {
     if (e.target === overlay) close();
   });
 
+  // Переключатель панели пароля
+  pwdToggle.addEventListener('click', () => {
+    pwdPanelOpen = !pwdPanelOpen;
+    pwdPanel.style.display = pwdPanelOpen ? 'block' : 'none';
+    pwdArrow.textContent = pwdPanelOpen ? '▾' : '▸';
+    if (!pwdPanelOpen) {
+      // Сбрасываем при закрытии
+      clearPw.checked = false;
+      oldPin.clear();
+      newPin.clear();
+      syncPasswordUi();
+    }
+  });
+
   function showErr(t) {
     if (!t) {
       errEl.style.display = 'none';
@@ -112,9 +160,11 @@ async function openRoomSettingsModal(roomId, hooks) {
   function syncPasswordUi() {
     const clr = clearPw.checked;
     if (hasRoomPassword) {
-      oldWrap.style.display = clr || newPin.getValue() ? 'block' : 'none';
+      oldWrap.style.display = (clr || newPin.getValue()) ? 'block' : 'none';
+      newHint.textContent = 'Новый пароль (6 символов)';
     } else {
       oldWrap.style.display = 'none';
+      newHint.textContent = 'Пароль (6 символов, необязательно)';
     }
     newWrap.style.display = clr ? 'none' : 'block';
   }
@@ -138,21 +188,32 @@ async function openRoomSettingsModal(roomId, hooks) {
       return;
     }
     const data = await res.json();
+    applyData(data);
+  }
+
+  function applyData(data) {
     initialTitle = data.title || '';
     titleInput.value = initialTitle;
-    const invitePath = data.invite_path || '';
-    fullInviteUrl = `${window.location.origin}${invitePath}`;
+
+    const code = data.invite_code || '';
+    fullInviteUrl = `${BASE_URL}/join/${code}`;
     inviteLink.href = fullInviteUrl;
     inviteLink.textContent = fullInviteUrl;
-    codeEl.textContent = data.invite_code || '—';
+    codeEl.textContent = code || '—';
+
     hasRoomPassword = !!data.has_room_password;
-    const clearWrap = overlay.querySelector('#rs-clear-wrap');
-    if (clearWrap) clearWrap.style.display = hasRoomPassword ? '' : 'none';
+    clearWrap.style.display = hasRoomPassword ? '' : 'none';
+    pwdToggleText.textContent = hasRoomPassword
+      ? 'Изменить / убрать пароль комнаты'
+      : 'Установить пароль комнаты';
+
     clearPw.checked = false;
     oldPin.clear();
     newPin.clear();
     syncPasswordUi();
+
     renderMembers(data.members || []);
+    renderBanned(data.banned_members || []);
   }
 
   function renderMembers(members) {
@@ -174,7 +235,7 @@ async function openRoomSettingsModal(roomId, hooks) {
         kick.addEventListener('click', async () => {
           const ok = await showAppConfirm({
             title: 'Удалить участника',
-            message: `Удалить пользователя «${m.username}» из комнаты?`,
+            message: `Удалить пользователя «${m.username}» из комнаты?\nОн не сможет зайти по текущей ссылке.`,
             confirmText: 'Удалить',
             cancelText: 'Отмена',
             danger: true,
@@ -201,6 +262,56 @@ async function openRoomSettingsModal(roomId, hooks) {
         li.appendChild(kick);
       }
       membersUl.appendChild(li);
+    });
+  }
+
+  function renderBanned(banned) {
+    bannedUl.innerHTML = '';
+    if (!banned.length) {
+      bannedSection.style.display = 'none';
+      return;
+    }
+    bannedSection.style.display = '';
+    banned.forEach((m) => {
+      const li = document.createElement('li');
+      li.className = 'room-settings-member';
+      const name = document.createElement('span');
+      name.className = 'room-settings-member-name rs-banned-name';
+      name.textContent = m.username;
+      li.appendChild(name);
+
+      const reinviteBtn = document.createElement('button');
+      reinviteBtn.type = 'button';
+      reinviteBtn.className = 'btn-reinvite';
+      reinviteBtn.title = 'Пригласить заново (новая ссылка)';
+      reinviteBtn.textContent = 'Новое приглашение';
+      reinviteBtn.addEventListener('click', async () => {
+        const ok = await showAppConfirm({
+          title: 'Новое приглашение',
+          message: `Снять блокировку для «${m.username}» и сгенерировать новую ссылку?\nСтарая ссылка перестанет работать для всех.`,
+          confirmText: 'Да, создать',
+          cancelText: 'Отмена',
+        });
+        if (!ok) return;
+        const res = await fetch(`/api/rooms/${roomId}/reinvite/${m.id}`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (res.status === 401) {
+          window.location.href = '/';
+          return;
+        }
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          await showAppAlert(typeof j.detail === 'string' ? j.detail : 'Не удалось', { title: 'Ошибка' });
+          return;
+        }
+        const data = await res.json();
+        applyData(data);
+        if (onSaved) onSaved();
+      });
+      li.appendChild(reinviteBtn);
+      bannedUl.appendChild(li);
     });
   }
 
@@ -236,22 +347,24 @@ async function openRoomSettingsModal(roomId, hooks) {
       body.title = t;
     }
 
-    const np = newPin.getValue();
-    const oldp = oldPin.getValue();
+    if (pwdPanelOpen) {
+      const np = newPin.getValue();
+      const oldp = oldPin.getValue();
 
-    if (clearPw.checked) {
-      if (hasRoomPassword) {
-        body.clear_room_password = true;
-        body.old_room_password = oldp;
+      if (clearPw.checked) {
+        if (hasRoomPassword) {
+          body.clear_room_password = true;
+          body.old_room_password = oldp;
+        }
+      } else if (np) {
+        if (np.length !== 6) {
+          showErr('Новый пароль: ровно 6 символов.');
+          return;
+        }
+        body.new_room_password = np;
+        body.new_room_password_confirm = np;
+        if (hasRoomPassword) body.old_room_password = oldp;
       }
-    } else if (np) {
-      if (np.length !== 6) {
-        showErr('Новый пароль: ровно 6 символов.');
-        return;
-      }
-      body.new_room_password = np;
-      body.new_room_password_confirm = np;
-      if (hasRoomPassword) body.old_room_password = oldp;
     }
 
     if (!Object.keys(body).length) {

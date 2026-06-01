@@ -98,6 +98,7 @@ class JoinPreviewOut(BaseModel):
     title: str | None
     has_room_password: bool
     already_member: bool = False
+    is_banned: bool = False
 
 
 class RoomJoinIn(BaseModel):
@@ -110,14 +111,15 @@ class RoomMemberOut(BaseModel):
     id: int
     username: str
     is_owner: bool
+    is_banned: bool = False
 
 
 class RoomSettingsOut(BaseModel):
     title: str | None
-    invite_path: str
     invite_code: str
     has_room_password: bool
     members: list[RoomMemberOut]
+    banned_members: list[RoomMemberOut] = Field(default_factory=list)
 
 
 class RoomSettingsPatch(BaseModel):
